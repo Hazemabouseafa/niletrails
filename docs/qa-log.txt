@@ -1,0 +1,36 @@
+desktop 01-home Sailing the Nile | NileTrails height 7361
+desktop 02-nile-cruises Nile Cruises | NileTrails height 3911
+desktop 03-cruise-detail Nile Cruises | NileTrails height 3876
+desktop 04-dahabiyas Dahabiyas | NileTrails height 3473
+desktop 05-dahabiya-detail Dahabiyas | NileTrails height 3876
+desktop 06-journeys Journeys | NileTrails height 3121
+desktop 07-journey-detail Classic Nile Journey | NileTrails height 3117
+desktop 08-destinations Beyond the Nile | NileTrails height 2926
+desktop 09-destination-detail Cairo & Giza | NileTrails height 2374
+desktop 10-nile-stories Nile Stories | NileTrails height 2975
+desktop 11-article How to Choose Your Nile Cruise | NileTrails height 3014
+desktop 12-about About NileTrails | NileTrails height 2663
+desktop 13-why-us About NileTrails | NileTrails height 2181
+desktop 14-travel-information Travel Information | NileTrails height 2347
+desktop 15-contact Contact | NileTrails height 2116
+desktop 16-plan-journey Plan Your Journey | NileTrails height 2161
+filter count 2 experiences to explore
+planner step 2 STEP 02 OF 03
+planner step 3 STEP 03 OF 03
+mobile 01-home Sailing the Nile | NileTrails height 10207
+mobile 02-nile-cruises Nile Cruises | NileTrails height 7192
+mobile 03-cruise-detail Nile Cruises | NileTrails height 5421
+mobile 04-dahabiyas Dahabiyas | NileTrails height 5222
+mobile 05-dahabiya-detail Dahabiyas | NileTrails height 5554
+mobile 06-journeys Journeys | NileTrails height 3002
+mobile 07-journey-detail Classic Nile Journey | NileTrails height 4862
+mobile 08-destinations Beyond the Nile | NileTrails height 3028
+mobile 09-destination-detail Cairo & Giza | NileTrails height 3205
+mobile 10-nile-stories Nile Stories | NileTrails height 4191
+mobile 11-article How to Choose Your Nile Cruise | NileTrails height 3193
+mobile 12-about About NileTrails | NileTrails height 3636
+mobile 13-why-us About NileTrails | NileTrails height 3032
+mobile 14-travel-information Travel Information | NileTrails height 2783
+mobile 15-contact Contact | NileTrails height 3081
+mobile 16-plan-journey Plan Your Journey | NileTrails height 3081
+mobile menu visible True

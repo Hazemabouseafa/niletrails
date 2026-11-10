@@ -1,0 +1,19 @@
+{
+  "name": "niletrails",
+  "version": "1.0.0",
+  "description": "NileTrails Atelier - Luxury Nile Cruises & CMS Platform",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "niletrails",
+    "nile-cruise",
+    "dahabiya",
+    "egypt",
+    "travel",
+    "cms"
+  ],
+  "author": "NileTrails",
+  "license": "ISC"
+}
