@@ -1292,17 +1292,546 @@ window.NileTrailsAdmin = (() => {
     `;
   }
 
-  // ==================== HOMEPAGE TAB (WITH WORKING heroVideo) ====================
+  const EDIT_MODE_KEY = 'nt_live_edit_mode';
+  const STATIC_PAGE_LABELS = {
+    'our-story': 'قصتنا (Our Story)',
+    'why-niletrails': 'لماذا NileTrails',
+    'our-team': 'فريق العمل (Our Team)',
+    'why-dahabiya': 'لماذا الإبحار بالذهبية (Why Dahabiya)',
+    'travel-information': 'معلومات السفر (Travel Information)',
+    'contact': 'صفحة اتصل بنا (Contact Us)',
+    'privacy-policy': 'سياسة الخصوصية (Privacy Policy)',
+    'terms-and-conditions': 'الشروط والأحكام (Terms & Conditions)'
+  };
+
+  function isEditMode() {
+    try { return sessionStorage.getItem(EDIT_MODE_KEY) === '1'; } catch { return false; }
+  }
+
+  function setEditMode(enabled) {
+    try { sessionStorage.setItem(EDIT_MODE_KEY, enabled ? '1' : '0'); } catch {}
+  }
+
+  const HOME_SECTION_EDITORS = {
+    hero: {
+      title: 'تحرير واجهة البداية والفيديو (Hero & Video)',
+      fields: [
+        { key: 'heroEyebrow', label: 'النص التمهيدي العلوي (Eyebrow)', type: 'text', full: true },
+        { key: 'heroTitle', label: 'العنوان الرئيسي (يدعم <em> و <br>)', type: 'text', full: true },
+        { key: 'heroSub', label: 'الوصف التحتي', type: 'textarea', full: true },
+        { key: 'heroVideo', label: 'فيديو الواجهة التلقائي الصامت (MP4 / يوتيوب)', type: 'video', full: true },
+        { key: 'heroImage', label: 'صورة الغلاف البديلة (Poster)', type: 'image', full: true },
+        { key: 'primaryBtnText', label: 'نص الزر الأساسي', type: 'text' },
+        { key: 'primaryBtnUrl', label: 'رابط الزر الأساسي', type: 'text', dir: 'ltr' },
+        { key: 'secondaryBtnText', label: 'نص الزر الثانوي', type: 'text' },
+        { key: 'secondaryBtnUrl', label: 'رابط الزر الثانوي', type: 'text', dir: 'ltr' }
+      ]
+    },
+    search: {
+      title: 'تحرير شريط البحث السريع',
+      fields: [
+        { key: 'searchCaption', label: 'العنوان الصغير', type: 'text' },
+        { key: 'searchQuestion', label: 'سؤال شريط البحث', type: 'text' },
+        { key: 'searchBtnText', label: 'نص زر البحث', type: 'text' }
+      ]
+    },
+    intro: {
+      title: 'تحرير قسم فلسفة الموقع (Philosophy Intro)',
+      fields: [
+        { key: 'introEyebrow', label: 'العنوان الصغير (Eyebrow)', type: 'text', full: true },
+        { key: 'introTitle', label: 'العنوان الرئيسي (يدعم <em> و <br>)', type: 'text', full: true },
+        { key: 'introBody', label: 'النص الوصفي', type: 'textarea', full: true },
+        { key: 'introLinkText', label: 'نص الرابط', type: 'text' },
+        { key: 'introLinkUrl', label: 'مسار الرابط', type: 'text', dir: 'ltr' }
+      ]
+    },
+    featuredCruises: {
+      title: 'تحرير عنوان قسم الكروز والذهبيات',
+      fields: [
+        { key: 'cruisesEyebrow', label: 'العنوان الصغير', type: 'text', full: true },
+        { key: 'cruisesTitle', label: 'العنوان الرئيسي (يدعم <em>)', type: 'text', full: true },
+        { key: 'cruisesSub', label: 'الوصف', type: 'textarea', full: true }
+      ]
+    },
+    sightseeingHome: {
+      title: 'تحرير عنوان قسم المزارات السياحية',
+      fields: [
+        { key: 'sightEyebrow', label: 'العنوان الصغير', type: 'text', full: true },
+        { key: 'sightTitle', label: 'العنوان الرئيسي (يدعم <em>)', type: 'text', full: true },
+        { key: 'sightSub', label: 'الوصف', type: 'textarea', full: true },
+        { key: 'sightBtnText', label: 'نص زر استكشاف كل المزارات', type: 'text', full: true }
+      ]
+    },
+    signature: {
+      title: 'تحرير قسم الدهبية والرحلات الهادئة (Signature)',
+      fields: [
+        { key: 'signatureEyebrow', label: 'العنوان الصغير', type: 'text', full: true },
+        { key: 'signatureTitle', label: 'العنوان الرئيسي (يدعم <em> و <br>)', type: 'text', full: true },
+        { key: 'signatureBody', label: 'النص الوصفي', type: 'textarea', full: true },
+        { key: 'signatureImage', label: 'الصورة الجانبية', type: 'image', full: true },
+        { key: 'signaturePoint1', label: 'نقطة 01', type: 'text', full: true },
+        { key: 'signaturePoint2', label: 'نقطة 02', type: 'text', full: true },
+        { key: 'signaturePoint3', label: 'نقطة 03', type: 'text', full: true },
+        { key: 'signatureBtnText', label: 'نص الزر', type: 'text' },
+        { key: 'signatureBtnUrl', label: 'رابط الزر', type: 'text', dir: 'ltr' }
+      ]
+    },
+    featuredAddons: {
+      title: 'تحرير عنوان قسم الإضافات والبرامج الملحقة',
+      fields: [
+        { key: 'addonsEyebrow', label: 'العنوان الصغير', type: 'text', full: true },
+        { key: 'addonsTitle', label: 'العنوان الرئيسي (يدعم <em>)', type: 'text', full: true },
+        { key: 'addonsSub', label: 'الوصف', type: 'textarea', full: true }
+      ]
+    },
+    journeysFeature: {
+      title: 'تحرير قسم الرحلات المتكاملة (Journeys Banner)',
+      fields: [
+        { key: 'journeysEyebrow', label: 'العنوان الصغير', type: 'text', full: true },
+        { key: 'journeysTitle', label: 'العنوان الرئيسي (يدعم <em> و <br>)', type: 'text', full: true },
+        { key: 'journeysBody', label: 'الوصف', type: 'textarea', full: true },
+        { key: 'journeysBtnText', label: 'نص الزر', type: 'text' },
+        { key: 'journeysBtnUrl', label: 'رابط الزر', type: 'text', dir: 'ltr' },
+        { key: 'journeysCard1Sub', label: 'وسم الكارت الأول', type: 'text' },
+        { key: 'journeysCard1Title', label: 'عنوان الكارت الأول', type: 'text' },
+        { key: 'journeysCard1Image', label: 'صورة الكارت الأول', type: 'image', full: true },
+        { key: 'journeysCard2Sub', label: 'وسم الكارت الثاني', type: 'text' },
+        { key: 'journeysCard2Title', label: 'عنوان الكارت الثاني', type: 'text' },
+        { key: 'journeysCard2Image', label: 'صورة الكارت الثاني', type: 'image', full: true }
+      ]
+    },
+    storiesSection: {
+      title: 'تحرير عنوان قسم مقالات وقصص النيل',
+      fields: [
+        { key: 'storiesEyebrow', label: 'العنوان الصغير', type: 'text', full: true },
+        { key: 'storiesTitle', label: 'العنوان الرئيسي (يدعم <em>)', type: 'text', full: true },
+        { key: 'storiesSub', label: 'الوصف', type: 'textarea', full: true }
+      ]
+    },
+    closingBanner: {
+      title: 'تحرير البانر الختامي (Closing Call-to-Action)',
+      fields: [
+        { key: 'closingEyebrow', label: 'العنوان الصغير', type: 'text', full: true },
+        { key: 'closingTitle', label: 'العنوان الرئيسي (يدعم <em> و <br>)', type: 'text', full: true },
+        { key: 'closingBody', label: 'النص الوصفي', type: 'textarea', full: true },
+        { key: 'closingImage', label: 'صورة الخلفية', type: 'image', full: true },
+        { key: 'closingBtnText', label: 'نص الزر', type: 'text' },
+        { key: 'closingBtnUrl', label: 'رابط الزر', type: 'text', dir: 'ltr' }
+      ]
+    }
+  };
+
+  function renderSchemaFieldHtml(f, val) {
+    const cls = f.full ? 'class="full-col"' : '';
+    const dirAttr = f.dir ? `dir="${f.dir}"` : '';
+    if (f.type === 'image' || f.type === 'video') {
+      return `<div ${cls}>${mediaFieldHtml(f.key, f.label, val || '', f.type === 'video')}</div>`;
+    }
+    if (f.type === 'textarea') {
+      return `<label ${cls}>${esc(f.label)}<textarea name="${esc(f.key)}" rows="3" ${dirAttr}>${esc(val || '')}</textarea></label>`;
+    }
+    if (f.type === 'color') {
+      return `<label ${cls}>${esc(f.label)}<div style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="color" name="${esc(f.key)}" value="${esc(val || '#0d2a3a')}" style="width:52px;height:40px;padding:2px;margin:0"><code dir="ltr">${esc(val || '')}</code></div></label>`;
+    }
+    return `<label ${cls}>${esc(f.label)}<input type="text" name="${esc(f.key)}" value="${esc(val || '')}" ${dirAttr}></label>`;
+  }
+
+  function openLiveSectionEditor(targetId, onSaved = null) {
+    const st = CMS.getState();
+    const hc = st.homeConfig || {};
+    const s = st.settings || {};
+
+    const commitAndFinish = async (msg) => {
+      await CMS.save();
+      lastSavedTime = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+      showToast(msg);
+      if (typeof onSaved === 'function') onSaved();
+      else renderAdmin('#app', { preserveScroll: true });
+    };
+
+    // Static core pages editor
+    if (targetId.startsWith('static:')) {
+      const slug = targetId.slice(7);
+      if (!st.staticPages) st.staticPages = {};
+      const pg = st.staticPages[slug] || { title: slug, eyebrow: 'NILETRAILS', subtitle: '', heroImage: 'assets/nile-sailing.webp', sectionEyebrow: '', heading: '', body1: '', body2: '', sideImage: 'assets/egypt-temple.webp', ctaText: '', ctaUrl: '' };
+      const fields = [
+        { key: 'title', label: 'عنوان الصفحة', type: 'text' },
+        { key: 'eyebrow', label: 'العنوان الفرعي العلوي (Eyebrow)', type: 'text' },
+        { key: 'subtitle', label: 'وصف الغلاف العلوي', type: 'textarea', full: true },
+        { key: 'heroImage', label: 'صورة غلاف الصفحة', type: 'image', full: true },
+        { key: 'heroVideo', label: 'فيديو غلاف الصفحة (اختياري)', type: 'video', full: true },
+        { key: 'sectionEyebrow', label: 'وسم القسم الداخلي', type: 'text' },
+        { key: 'heading', label: 'العنوان الداخلي (يدعم <em> و <br>)', type: 'text' },
+        { key: 'body1', label: 'الفقرة الأولى', type: 'textarea', full: true },
+        { key: 'body2', label: 'الفقرة الثانية', type: 'textarea', full: true },
+        { key: 'sideImage', label: 'الصورة الجانبية (إن وجدت)', type: 'image', full: true },
+        { key: 'ctaText', label: 'نص الزر', type: 'text' },
+        { key: 'ctaUrl', label: 'رابط الزر', type: 'text', dir: 'ltr' }
+      ];
+      openSlideDrawer({
+        title: `تحرير صفحة: ${STATIC_PAGE_LABELS[slug] || pg.title}`,
+        subtitle: `/${slug}`,
+        bodyHtml: `<form id="live-sec-form" class="adm-drawer-form"><div class="adm-form-grid">${fields.map(f => renderSchemaFieldHtml(f, pg[f.key])).join('')}</div></form>`,
+        footerHtml: `<button type="button" class="adm-btn-outline" id="btn-live-cancel">إلغاء</button><button type="submit" form="live-sec-form" class="adm-btn-gold">حفظ وتحديث الصفحة ✓</button>`,
+        onOpen: (dlg) => {
+          $('#btn-live-cancel', dlg)?.addEventListener('click', () => dlg.close());
+          $('#live-sec-form', dlg)?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fd = new FormData(e.target);
+            const updated = { ...pg };
+            fields.forEach(f => { updated[f.key] = fd.get(f.key) ?? ''; });
+            st.staticPages[slug] = updated;
+            dlg.close();
+            await commitAndFinish(`تم تحديث صفحة "${updated.title}"`);
+          });
+        }
+      });
+      return;
+    }
+
+    // Experience 4-card mosaic editor
+    if (targetId === 'experiences') {
+      const exps = Array.isArray(hc.experiences) ? hc.experiences : [];
+      openSlideDrawer({
+        title: 'تحرير شبكة التجارب الـ 4 (Discover Your Way)',
+        subtitle: 'تحكم في العناوين والصور والروابط لكل كارت في الصفحة الرئيسية',
+        bodyHtml: `
+          <form id="live-sec-form" class="adm-drawer-form">
+            <div class="adm-form-grid">
+              <label class="full-col">العنوان الصغير <input type="text" name="expEyebrow" value="${esc(hc.expEyebrow)}"></label>
+              <label class="full-col">العنوان الرئيسي (يدعم &lt;em&gt;) <input type="text" name="expTitle" value="${esc(hc.expTitle)}"></label>
+              <label class="full-col">الوصف <textarea name="expSub" rows="2">${esc(hc.expSub)}</textarea></label>
+            </div>
+            <hr class="adm-sep">
+            ${exps.map((ex, i) => `
+              <div class="adm-repeater-card" style="margin-bottom:12px">
+                <div class="adm-repeater-head"><strong>كارت 0${i + 1}: ${esc(ex.title)}</strong></div>
+                <div class="adm-form-grid">
+                  <label>العنوان <input type="text" name="expTitle_${i}" value="${esc(ex.title)}"></label>
+                  <label>الرابط <input type="text" name="expUrl_${i}" value="${esc(ex.url)}" dir="ltr"></label>
+                  <label class="full-col">الوصف المختصر <textarea name="expDesc_${i}" rows="2">${esc(ex.desc)}</textarea></label>
+                  <div class="full-col">${mediaFieldHtml(`expImg_${i}`, 'الصورة', ex.image || 'assets/nile-sailing.webp', false)}</div>
+                </div>
+              </div>
+            `).join('')}
+          </form>
+        `,
+        footerHtml: `<button type="button" class="adm-btn-outline" id="btn-live-cancel">إلغاء</button><button type="submit" form="live-sec-form" class="adm-btn-gold">حفظ وتحديث الصفحة ✓</button>`,
+        onOpen: (dlg) => {
+          $('#btn-live-cancel', dlg)?.addEventListener('click', () => dlg.close());
+          $('#live-sec-form', dlg)?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fd = new FormData(e.target);
+            hc.expEyebrow = fd.get('expEyebrow');
+            hc.expTitle = fd.get('expTitle');
+            hc.expSub = fd.get('expSub');
+            hc.experiences = exps.map((ex, i) => ({
+              ...ex,
+              title: fd.get(`expTitle_${i}`),
+              url: fd.get(`expUrl_${i}`),
+              desc: fd.get(`expDesc_${i}`),
+              image: fd.get(`expImg_${i}`)
+            }));
+            dlg.close();
+            await commitAndFinish('تم حفظ شبكة التجارب وتحديثها');
+          });
+        }
+      });
+      return;
+    }
+
+    // Header, Logo & Top Navigation Menus Editor
+    if (targetId === 'header') {
+      const navKeys = [
+        ['nile-cruises', 'Nile Cruises'],
+        ['dahabiyas', 'Dahabiyas'],
+        ['journeys', 'Journeys'],
+        ['beyond-the-nile', 'Beyond the Nile'],
+        ['nile-stories', 'Nile Stories'],
+        ['about', 'About']
+      ];
+      const hiddenKeys = new Set(s.hiddenNavKeys || []);
+      const customNav = Array.isArray(s.customNavItems) ? s.customNavItems : [];
+
+      openSlideDrawer({
+        title: 'تحرير الهيدر والشعار والقائمة العلوية',
+        subtitle: 'تغيير اللوجو، مسميات الأزرار، إخفاء أو إظهار القوائم، وإضافة روابط علوية مخصصة',
+        bodyHtml: `
+          <form id="live-sec-form" class="adm-drawer-form">
+            <div class="adm-form-grid">
+              <label>اسم الموقع <input type="text" name="brandName" value="${esc(s.brandName)}"></label>
+              <label>الشعار المختصر <input type="text" name="tagline" value="${esc(s.tagline)}"></label>
+              <div class="full-col">${mediaFieldHtml('brandLogo', 'صورة الشعار (Logo)', s.brandLogo || 'assets/niletrails-logo.png', false)}</div>
+              <label>نص الزر الثاني بالهيدر <input type="text" name="headerSecondaryText" value="${esc(s.headerSecondaryText || 'Nubian & Nile')}"></label>
+              <label>رابط الزر الثاني <input type="text" name="headerSecondaryUrl" value="${esc(s.headerSecondaryUrl || 'beyond-the-nile/nubian-and-the-nile')}" dir="ltr"></label>
+              <label>نص الزر الأساسي بالهيدر <input type="text" name="headerPrimaryText" value="${esc(s.headerPrimaryText || 'Plan your journey')}"></label>
+              <label>رابط الزر الأساسي <input type="text" name="headerPrimaryUrl" value="${esc(s.headerPrimaryUrl || 'plan-your-journey')}" dir="ltr"></label>
+            </div>
+            <hr class="adm-sep">
+            <h4 style="margin:0 0 10px">تعديل وإخفاء القوائم الرئيسية بالهيدر</h4>
+            <div style="display:grid;gap:8px;margin-bottom:16px">
+              ${navKeys.map(([k, defLbl]) => `
+                <div style="display:flex;gap:10px;align-items:center;background:#fff;border:1px solid #dce3e9;padding:8px 12px;border-radius:6px">
+                  <label class="adm-switch" style="min-width:85px"><input type="checkbox" name="showNav_${k}" ${!hiddenKeys.has(k) ? 'checked' : ''}><span>إظهار</span></label>
+                  <input type="text" name="lblNav_${k}" value="${esc(s.navLabels?.[k] || defLbl)}" style="flex:1;padding:7px 10px;border:1px solid #cbd3da;border-radius:4px">
+                </div>
+              `).join('')}
+            </div>
+            <div class="adm-drawer-sec-head">
+              <h4>روابط إضافية مخصصة بالهيدر (${customNav.length})</h4>
+              <button type="button" class="adm-btn-primary-sm" id="btn-add-custom-nav">+ إضافة رابط</button>
+            </div>
+            <div id="custom-nav-list" style="display:grid;gap:8px">
+              ${customNav.map(ci => `
+                <div class="adm-custom-nav-row" style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px">
+                  <input type="text" class="cn-label" value="${esc(ci.label)}" placeholder="عنوان الرابط" style="padding:7px;border:1px solid #cbd3da;border-radius:4px">
+                  <input type="text" class="cn-url" value="${esc(ci.url)}" placeholder="nile-cruises" dir="ltr" style="padding:7px;border:1px solid #cbd3da;border-radius:4px">
+                  <button type="button" class="adm-btn-danger-sm btn-del-cn">×</button>
+                </div>
+              `).join('')}
+            </div>
+          </form>
+        `,
+        footerHtml: `<button type="button" class="adm-btn-outline" id="btn-live-cancel">إلغاء</button><button type="submit" form="live-sec-form" class="adm-btn-gold">حفظ وتحديث الهيدر ✓</button>`,
+        onOpen: (dlg) => {
+          $('#btn-live-cancel', dlg)?.addEventListener('click', () => dlg.close());
+          const bindDel = (root) => $$('.btn-del-cn', root).forEach(b => b.addEventListener('click', () => b.closest('.adm-custom-nav-row')?.remove()));
+          bindDel(dlg);
+          $('#btn-add-custom-nav', dlg)?.addEventListener('click', () => {
+            const box = $('#custom-nav-list', dlg);
+            const row = document.createElement('div');
+            row.className = 'adm-custom-nav-row';
+            row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr auto;gap:8px';
+            row.innerHTML = `<input type="text" class="cn-label" value="Special Offers" placeholder="عنوان الرابط" style="padding:7px;border:1px solid #cbd3da;border-radius:4px"><input type="text" class="cn-url" value="journeys" placeholder="المسار" dir="ltr" style="padding:7px;border:1px solid #cbd3da;border-radius:4px"><button type="button" class="adm-btn-danger-sm btn-del-cn">×</button>`;
+            box.appendChild(row);
+            bindDel(row);
+          });
+          $('#live-sec-form', dlg)?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fd = new FormData(e.target);
+            s.brandName = fd.get('brandName');
+            s.tagline = fd.get('tagline');
+            s.brandLogo = fd.get('brandLogo');
+            s.headerSecondaryText = fd.get('headerSecondaryText');
+            s.headerSecondaryUrl = fd.get('headerSecondaryUrl');
+            s.headerPrimaryText = fd.get('headerPrimaryText');
+            s.headerPrimaryUrl = fd.get('headerPrimaryUrl');
+            s.navLabels = s.navLabels || {};
+            const nextHidden = [];
+            navKeys.forEach(([k]) => {
+              s.navLabels[k] = fd.get(`lblNav_${k}`);
+              if (fd.get(`showNav_${k}`) !== 'on') nextHidden.push(k);
+            });
+            s.hiddenNavKeys = nextHidden;
+            s.customNavItems = $$('.adm-custom-nav-row', dlg).map((row, idx) => ({
+              id: 'cn-' + idx,
+              label: row.querySelector('.cn-label')?.value?.trim(),
+              url: row.querySelector('.cn-url')?.value?.trim() || ''
+            })).filter(x => x.label);
+            st.settings = s;
+            dlg.close();
+            await commitAndFinish('تم حفظ وتحديث الهيدر والقوائم');
+          });
+        }
+      });
+      return;
+    }
+
+    // Footer & Social Links Editor
+    if (targetId === 'footer') {
+      const fields = [
+        { key: 'footerCtaEyebrow', label: 'الوسم العلوي قبل الفوتر', type: 'text', full: true },
+        { key: 'footerCtaTitle', label: 'عنوان الدعوة قبل الفوتر (يدعم <em>)', type: 'text', full: true },
+        { key: 'footerCtaBtnText', label: 'نص زر الفوتر العلوي', type: 'text' },
+        { key: 'footerCtaBtnUrl', label: 'رابط زر الفوتر العلوي', type: 'text', dir: 'ltr' },
+        { key: 'footerAbout', label: 'نبذة العلامة التجارية بالفوتر', type: 'textarea', full: true },
+        { key: 'footerConvText', label: 'نص التواصل في عمود الفوتر', type: 'textarea', full: true },
+        { key: 'contactEmail', label: 'البريد الإلكتروني', type: 'text', dir: 'ltr' },
+        { key: 'contactPhone', label: 'الهاتف / واتساب', type: 'text', dir: 'ltr' },
+        { key: 'socialInstagram', label: 'رابط Instagram (اختياري)', type: 'text', dir: 'ltr' },
+        { key: 'socialFacebook', label: 'رابط Facebook (اختياري)', type: 'text', dir: 'ltr' }
+      ];
+      openSlideDrawer({
+        title: 'تحرير الفوتر ومعلومات التواصل (Footer & Social)',
+        subtitle: 'كل تغييرات الفوتر تنعكس فوراً في كل صفحات الموقع',
+        bodyHtml: `<form id="live-sec-form" class="adm-drawer-form"><div class="adm-form-grid">${fields.map(f => renderSchemaFieldHtml(f, s[f.key])).join('')}</div></form>`,
+        footerHtml: `<button type="button" class="adm-btn-outline" id="btn-live-cancel">إلغاء</button><button type="submit" form="live-sec-form" class="adm-btn-gold">حفظ وتحديث الفوتر ✓</button>`,
+        onOpen: (dlg) => {
+          $('#btn-live-cancel', dlg)?.addEventListener('click', () => dlg.close());
+          $('#live-sec-form', dlg)?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fd = new FormData(e.target);
+            fields.forEach(f => { s[f.key] = fd.get(f.key) ?? ''; });
+            st.settings = s;
+            dlg.close();
+            await commitAndFinish('تم حفظ وتحديث الفوتر ومعلومات التواصل');
+          });
+        }
+      });
+      return;
+    }
+
+    // Theme Colors Editor
+    if (targetId === 'theme') {
+      const th = s.theme || { navy: '#0d2a3a', gold: '#c7a36a', cream: '#fcfaf6' };
+      openSlideDrawer({
+        title: 'تخصيص ألوان وهوية الموقع (Theme Palette)',
+        subtitle: 'تحكم فوري في الألوان الرئيسية للموقع بالكامل',
+        bodyHtml: `
+          <form id="live-sec-form" class="adm-drawer-form">
+            <div class="adm-form-grid">
+              ${renderSchemaFieldHtml({ key: 'navy', label: 'اللون الأساسي الكحلي (Primary Navy)', type: 'color', full: true }, th.navy)}
+              ${renderSchemaFieldHtml({ key: 'gold', label: 'اللون الذهبي المميز (Accent Gold)', type: 'color', full: true }, th.gold)}
+              ${renderSchemaFieldHtml({ key: 'cream', label: 'خلفية الصفحات الفاتحة (Background Cream)', type: 'color', full: true }, th.cream)}
+            </div>
+            <button type="button" id="btn-reset-theme" class="adm-btn-outline-sm" style="margin-top:14px">↺ استعادة ألوان NileTrails الأصلية</button>
+          </form>
+        `,
+        footerHtml: `<button type="button" class="adm-btn-outline" id="btn-live-cancel">إلغاء</button><button type="submit" form="live-sec-form" class="adm-btn-gold">تطبيق الألوان ✓</button>`,
+        onOpen: (dlg) => {
+          $('#btn-live-cancel', dlg)?.addEventListener('click', () => dlg.close());
+          $('#btn-reset-theme', dlg)?.addEventListener('click', () => {
+            dlg.querySelector('[name="navy"]').value = '#0d2a3a';
+            dlg.querySelector('[name="gold"]').value = '#c7a36a';
+            dlg.querySelector('[name="cream"]').value = '#fcfaf6';
+          });
+          $('#live-sec-form', dlg)?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fd = new FormData(e.target);
+            s.theme = { navy: fd.get('navy'), gold: fd.get('gold'), cream: fd.get('cream') };
+            st.settings = s;
+            dlg.close();
+            await commitAndFinish('تم تحديث ألوان وهوية الموقع');
+          });
+        }
+      });
+      return;
+    }
+
+    // Schema-based Homepage Section Editor (hero, search, intro, featuredCruises, sightseeingHome, signature, etc.)
+    const schema = HOME_SECTION_EDITORS[targetId];
+    if (schema) {
+      const pts = Array.isArray(hc.signaturePoints) ? hc.signaturePoints : ['', '', ''];
+      const vals = {
+        ...hc,
+        signaturePoint1: pts[0] || '',
+        signaturePoint2: pts[1] || '',
+        signaturePoint3: pts[2] || ''
+      };
+      openSlideDrawer({
+        title: schema.title,
+        subtitle: 'كل التعديلات تظهر فوراً على الموقع للعملاء',
+        bodyHtml: `<form id="live-sec-form" class="adm-drawer-form"><div class="adm-form-grid">${schema.fields.map(f => renderSchemaFieldHtml(f, vals[f.key])).join('')}</div></form>`,
+        footerHtml: `<button type="button" class="adm-btn-outline" id="btn-live-cancel">إلغاء</button><button type="submit" form="live-sec-form" class="adm-btn-gold">حفظ وتحديث فوراً ✓</button>`,
+        onOpen: (dlg) => {
+          $('#btn-live-cancel', dlg)?.addEventListener('click', () => dlg.close());
+          $('#live-sec-form', dlg)?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fd = new FormData(e.target);
+            schema.fields.forEach(f => {
+              if (!f.key.startsWith('signaturePoint')) {
+                hc[f.key] = fd.get(f.key) ?? '';
+              }
+            });
+            if (targetId === 'signature') {
+              hc.signaturePoints = [fd.get('signaturePoint1'), fd.get('signaturePoint2'), fd.get('signaturePoint3')].filter(Boolean);
+            }
+            st.homeConfig = hc;
+            dlg.close();
+            await commitAndFinish(`تم حفظ تعديلات "${schema.title}"`);
+          });
+        }
+      });
+    }
+  }
+
+  function renderSiteBuilderTab(st) {
+    const s = st.settings || {};
+    const th = s.theme || { navy: '#0d2a3a', gold: '#c7a36a', cream: '#fcfaf6' };
+    const staticKeys = Object.keys(STATIC_PAGE_LABELS);
+
+    return `
+      <div class="adm-section-head">
+        <div>
+          <h2>التحكم الشامل بالهوية والقوائم والفوتر والصفحات</h2>
+          <p>تحكم بالكامل في اللوجو، ألوان الموقع، قوائم الهيدر، الفوتر، وتعديل كل نصوص وصور الصفحات الثابتة — أو شغّل وضع التحرير المباشر فوق الموقع الحي!</p>
+        </div>
+        <button type="button" class="adm-btn-gold" data-enable-live-edit="true">✏ فتح الموقع بوضع التحرير المباشر ↗</button>
+      </div>
+
+      <div class="adm-grid-2">
+        <div class="adm-card">
+          <div class="adm-card-head">
+            <div>
+              <h3>الهيدر واللوجو والقائمة العلوية</h3>
+              <p class="adm-card-sub">${esc(s.brandName)} · ${(s.hiddenNavKeys || []).length} قوائم مخفية · ${(s.customNavItems || []).length} روابط إضافية</p>
+            </div>
+            <button type="button" class="adm-btn-gold-sm" data-edit-live-sec="header">✏ تعديل الهيدر والقوائم</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px">
+            <img src="${esc(s.brandLogo || 'assets/niletrails-logo.png')}" alt="Logo" style="height:44px;width:auto;background:#fcfaf6;padding:6px 10px;border-radius:4px;border:1px solid #dce2e8">
+            <small style="color:#5c727e">يمكنك تغيير صورة اللوجو، الأزرار العلوية، وإخفاء/تعديل أسماء القوائم.</small>
+          </div>
+        </div>
+
+        <div class="adm-card">
+          <div class="adm-card-head">
+            <div>
+              <h3>الفوتر ومعلومات التواصل والسوشيال</h3>
+              <p class="adm-card-sub">${esc(s.contactEmail)} · ${esc(s.contactPhone)}</p>
+            </div>
+            <button type="button" class="adm-btn-gold-sm" data-edit-live-sec="footer">✏ تعديل الفوتر</button>
+          </div>
+          <p style="margin:0;font-size:13px;color:#5c727e">${esc(s.footerAbout || '')}</p>
+        </div>
+
+        <div class="adm-card">
+          <div class="adm-card-head">
+            <div>
+              <h3>ألوان وهوية الموقع (Theme Palette)</h3>
+              <p class="adm-card-sub">تنعكس الألوان فوراً على الأزرار والعناوين والخلفيات</p>
+            </div>
+            <button type="button" class="adm-btn-gold-sm" data-edit-live-sec="theme">🎨 تعديل الألوان</button>
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <span class="pill" style="background:${esc(th.navy)};color:#fff">Navy: ${esc(th.navy)}</span>
+            <span class="pill" style="background:${esc(th.gold)};color:#092434">Gold: ${esc(th.gold)}</span>
+            <span class="pill" style="background:${esc(th.cream)};color:#092434;border:1px solid #ccc">Cream: ${esc(th.cream)}</span>
+          </div>
+        </div>
+
+        <div class="adm-card">
+          <div class="adm-card-head">
+            <div>
+              <h3>الصفحات الأساسية الثابتة (${staticKeys.length})</h3>
+              <p class="adm-card-sub">تحرير نصوص وصور وفيديوهات صفحات: عن الشركة، الذهبية، السفر، التواصل، والسياسات</p>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            ${staticKeys.map(k => `
+              <button type="button" class="adm-btn-outline-sm" style="justify-content:space-between;display:flex;padding:9px 12px" data-edit-live-sec="static:${k}">
+                <span>${STATIC_PAGE_LABELS[k]}</span>
+                <span>✏</span>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ==================== HOMEPAGE TAB (WITH WORKING heroVideo & FULL SECTION EDITOR) ====================
   function renderHomepageTab(st) {
     const hc = st.homeConfig || {};
-    const sections = hc.sectionsOrder || [];
+    const sections = hc.sections || hc.sectionsOrder || [];
 
     return `
       <div class="adm-section-head">
         <div>
           <h2>تخطيط الصفحة الرئيسية (Home Appearance)</h2>
-          <p>تحكم في الفيديو الافتتاحي الصامت، النصوص الرئيسية، وإظهار أو ترتيب أي قسم بالصفحة الرئيسية.</p>
+          <p>تحكم في الفيديو الافتتاحي الصامت، كل نصوص وصور الأقسام، وإظهار أو إخفاء أو إعادة ترتيب أي قسم.</p>
         </div>
+        <button type="button" class="adm-btn-gold" data-enable-live-edit="true">✏ فتح الموقع بوضع التحرير المباشر ↗</button>
       </div>
 
       <div class="adm-grid-2">
@@ -1325,8 +1854,8 @@ window.NileTrailsAdmin = (() => {
         </form>
 
         <div class="adm-card">
-          <h3>أقسام الصفحة الرئيسية (إظهار / إخفاء / ترتيب)</h3>
-          <p class="adm-card-sub" style="margin-bottom:14px">يتم حفظ أي تبديل تلقائياً.</p>
+          <h3>أقسام الصفحة الرئيسية (${sections.length} أقسام — تحكم كامل)</h3>
+          <p class="adm-card-sub" style="margin-bottom:14px">فعّل أو أخفِ أو رتّب أي قسم، واضغط ✏ لتعديل نصوصه وصوره بالكامل.</p>
           <div class="adm-sections-sorter">
             ${sections.map((sec, idx) => `
               <div class="adm-sec-item ${sec.enabled === false ? 'off' : ''}">
@@ -1334,7 +1863,8 @@ window.NileTrailsAdmin = (() => {
                   <input type="checkbox" data-toggle-section="${idx}" ${sec.enabled !== false ? 'checked' : ''}>
                   <span><strong>${esc(sec.label)}</strong> <small dir="ltr">(${esc(sec.id)})</small></span>
                 </label>
-                <div style="display:flex;gap:6px">
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  ${sec.id !== 'customPagesHome' ? `<button type="button" class="adm-btn-gold-sm" data-edit-live-sec="${esc(sec.id)}">✏ تعديل</button>` : ''}
                   <button type="button" class="adm-btn-outline-sm" data-move-section="${idx}:-1">↑</button>
                   <button type="button" class="adm-btn-outline-sm" data-move-section="${idx}:1">↓</button>
                 </div>
@@ -1522,12 +2052,13 @@ window.NileTrailsAdmin = (() => {
 
     const navGroups = [
       { id: 'bookings', icon: '📥', label: 'الحجوزات والطلبات', badge: newEnqCount },
+      { id: 'homepage', icon: '🎨', label: 'الصفحة الرئيسية والأقسام' },
+      { id: 'sitebuilder', icon: '🧩', label: 'الهوية والقوائم والفوتر والصفحات' },
       { id: 'cruises', icon: '🚢', label: 'الكروزات والذهبيات والبرامج', badge: (st.cruises?.length || 0) + (st.dahabiyas?.length || 0) },
       { id: 'sightseeing', icon: '🏛', label: 'المزارات السياحية', badge: st.sightseeingPlaces?.length || 0 },
       { id: 'addons', icon: '✦', label: 'الإضافات (Add-ons)', badge: st.addons?.length || 0 },
       { id: 'faqs', icon: '❓', label: 'الأسئلة الشائعة (FAQ)', badge: st.faqs?.length || 0 },
-      { id: 'pages', icon: '📄', label: 'بناء الصفحات', badge: st.customPages?.length || 0 },
-      { id: 'homepage', icon: '🎨', label: 'الصفحة الرئيسية والأقسام' },
+      { id: 'pages', icon: '📄', label: 'بناء الصفحات المخصصة', badge: st.customPages?.length || 0 },
       { id: 'collections', icon: '🗺', label: 'الرحلات والوجهات والمقالات' },
       { id: 'settings', icon: '⚙', label: 'الإعدادات والنسخ الاحتياطي' }
     ];
@@ -1542,6 +2073,7 @@ window.NileTrailsAdmin = (() => {
     else if (activeTab === 'faqs') bodyContent = renderFaqsTab(st);
     else if (activeTab === 'pages') bodyContent = renderPagesTab(st);
     else if (activeTab === 'homepage') bodyContent = renderHomepageTab(st);
+    else if (activeTab === 'sitebuilder') bodyContent = renderSiteBuilderTab(st);
     else if (activeTab === 'collections') bodyContent = renderCollectionsTab(st);
     else if (activeTab === 'settings') bodyContent = renderSettingsTab(st);
 
@@ -2139,10 +2671,23 @@ window.NileTrailsAdmin = (() => {
       await saveAndRefresh(containerSelector, 'تم حفظ واجهة وفيديو الصفحة الرئيسية');
     });
 
+    $$('[data-edit-live-sec]').forEach(btn => {
+      btn.addEventListener('click', () => openLiveSectionEditor(btn.dataset.editLiveSec));
+    });
+
+    $$('[data-enable-live-edit]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setEditMode(true);
+        location.hash = '#/';
+      });
+    });
+
     $$('[data-toggle-section]').forEach(chk => {
       chk.addEventListener('change', async () => {
         const idx = Number(chk.dataset.toggleSection);
-        st.homeConfig.sectionsOrder[idx].enabled = chk.checked;
+        const list = st.homeConfig.sections || st.homeConfig.sectionsOrder || [];
+        st.homeConfig.sections = list;
+        if (list[idx]) list[idx].enabled = chk.checked;
         await saveAndRefresh(containerSelector, 'تم تحديث ظهور القسم');
       });
     });
@@ -2151,7 +2696,8 @@ window.NileTrailsAdmin = (() => {
       btn.addEventListener('click', async () => {
         const [idxStr, dirStr] = btn.dataset.moveSection.split(':');
         const idx = Number(idxStr), dir = Number(dirStr);
-        const list = st.homeConfig.sectionsOrder;
+        const list = st.homeConfig.sections || st.homeConfig.sectionsOrder || [];
+        st.homeConfig.sections = list;
         const target = idx + dir;
         if (target >= 0 && target < list.length) {
           [list[idx], list[target]] = [list[target], list[idx]];
@@ -2260,5 +2806,34 @@ window.NileTrailsAdmin = (() => {
     });
   }
 
-  return { renderAdmin };
+  return {
+    renderAdmin,
+    isEditMode,
+    setEditMode,
+    openLiveEditor: openLiveSectionEditor,
+    openTab: (tabId) => { activeTab = tabId; },
+    toggleHomeSectionVisibility: async (secId, onDone) => {
+      const st = CMS.getState();
+      const list = st.homeConfig?.sections || [];
+      const item = list.find(x => x.id === secId);
+      if (item) {
+        item.enabled = item.enabled === false;
+        await CMS.save();
+        showToast(item.enabled ? `تم إظهار "${secId}"` : `تم إخفاء "${secId}"`);
+        if (onDone) onDone();
+      }
+    },
+    moveHomeSection: async (secId, dir, onDone) => {
+      const st = CMS.getState();
+      const list = st.homeConfig?.sections || [];
+      const idx = list.findIndex(x => x.id === secId);
+      const target = idx + dir;
+      if (idx >= 0 && target >= 0 && target < list.length) {
+        [list[idx], list[target]] = [list[target], list[idx]];
+        await CMS.save();
+        showToast('تم تغيير ترتيب القسم في الصفحة الرئيسية');
+        if (onDone) onDone();
+      }
+    }
+  };
 })();

@@ -14,7 +14,51 @@
   const $$ = (s, c = document) => [...c.querySelectorAll(s)];
   const p = s => '#/' + (s || '');
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const photo = (src, alt, cls = '') => `<img class="${cls}" src="${esc(src || IMG.sailing)}" alt="${esc(alt)}" loading="lazy">`;
+  const photo = (src, alt, cls = '', eager = false) => `<img class="${cls}" src="${esc(src || IMG.sailing)}" alt="${esc(alt)}" loading="${eager ? 'eager' : 'lazy'}" decoding="${eager ? 'sync' : 'async'}" onerror="if(!this.dataset.fb){this.dataset.fb=1;this.src='${IMG.temple}';}">`;
+
+  function applyTheme(st) {
+    const th = st?.settings?.theme || {};
+    const root = document.documentElement;
+    if (th.navy) {
+      root.style.setProperty('--navy', th.navy);
+      root.style.setProperty('--deep', th.navy);
+    } else {
+      root.style.removeProperty('--navy');
+      root.style.removeProperty('--deep');
+    }
+    if (th.gold) root.style.setProperty('--gold', th.gold);
+    else root.style.removeProperty('--gold');
+    if (th.cream) root.style.setProperty('--cream', th.cream);
+    else root.style.removeProperty('--cream');
+  }
+
+  function isLiveEdit() {
+    return Boolean(window.NileTrailsAdmin?.isEditMode?.());
+  }
+
+  function liveSecWrap(targetId, labelText, innerHtml, opts = {}) {
+    if (!isLiveEdit()) return innerHtml;
+    const isHomeSec = Boolean(opts.isHomeSec);
+    const isHidden = Boolean(opts.isHidden);
+    const adminTab = opts.adminTab || '';
+    const editAttr = adminTab ? `data-open-admin-tab="${esc(adminTab)}"` : `data-live-edit-sec="${esc(targetId)}"`;
+    return `
+      <div class="nt-live-sec ${isHidden ? 'is-hidden-sec' : ''}" data-live-sec="${esc(targetId)}">
+        <div class="nt-live-sec-bar">
+          <span class="nt-live-badge">${isHidden ? '👁 مخفي: ' : '✎ '}${esc(labelText)}</span>
+          <div class="nt-live-actions">
+            <button type="button" class="nt-live-btn is-primary" ${editAttr}>${adminTab ? '⚙ إدارة' : '✏ تعديل'}</button>
+            ${isHomeSec ? `
+              <button type="button" class="nt-live-btn" data-live-sec-move="${esc(targetId)}:-1" title="تحريك لأعلى">↑</button>
+              <button type="button" class="nt-live-btn" data-live-sec-move="${esc(targetId)}:1" title="تحريك لأسفل">↓</button>
+              <button type="button" class="nt-live-btn" data-live-sec-hide="${esc(targetId)}">${isHidden ? '👁 إظهار' : '🙈 إخفاء'}</button>
+            ` : ''}
+          </div>
+        </div>
+        ${isHidden ? `<div class="nt-live-hidden-stub">هذا القسم مخفي حالياً عن الزوار — يمكنك إظهاره أو تعديله من الشريط أعلاه.</div>` : innerHtml}
+      </div>
+    `;
+  }
   const button = (text, url, cls = 'btn-primary') => `<a href="${p(url)}" class="button ${cls}">${text}<span aria-hidden="true">↗</span></a>`;
   const arrow = (text, url) => `<a class="text-link" href="${p(url)}">${text}<span aria-hidden="true">↗</span></a>`;
   const label = (txt) => `<span class="eyebrow"><span class="eyebrow-mark"></span>${txt}</span>`;
@@ -88,10 +132,21 @@
       }
     });
 
+    const navLabels = st.settings?.navLabels || {};
+    const hiddenSet = new Set(st.settings?.hiddenNavKeys || []);
+    const customNavItems = (st.settings?.customNavItems || [])
+      .filter(ci => ci && ci.label)
+      .map((ci, idx) => ({
+        key: 'custom-nav-' + idx,
+        name: ci.label,
+        url: ci.url || '',
+        children: [[ci.label, ci.url || '']]
+      }));
+
     const baseMenus = [
       {
         key: 'nile-cruises',
-        name: 'Nile Cruises',
+        name: navLabels['nile-cruises'] || 'Nile Cruises',
         url: 'nile-cruises',
         children: [
           ['All Nile Cruises', 'nile-cruises'],
@@ -105,7 +160,7 @@
       },
       {
         key: 'dahabiyas',
-        name: 'Dahabiyas',
+        name: navLabels['dahabiyas'] || 'Dahabiyas',
         url: 'dahabiyas',
         children: [
           ['Explore Dahabiyas', 'dahabiyas'],
@@ -120,7 +175,7 @@
       },
       {
         key: 'journeys',
-        name: 'Journeys',
+        name: navLabels['journeys'] || 'Journeys',
         url: 'journeys',
         children: [
           ...activeJourneys.map(j => [j.name, 'journeys/' + j.slug]),
@@ -129,7 +184,7 @@
       },
       {
         key: 'beyond-the-nile',
-        name: 'Beyond the Nile',
+        name: navLabels['beyond-the-nile'] || 'Beyond the Nile',
         url: 'beyond-the-nile',
         children: [
           ...beyondChildren,
@@ -138,7 +193,7 @@
       },
       {
         key: 'nile-stories',
-        name: 'Nile Stories',
+        name: navLabels['nile-stories'] || 'Nile Stories',
         url: 'nile-stories',
         children: [
           ['All stories', 'nile-stories'],
@@ -150,7 +205,7 @@
       },
       {
         key: 'about',
-        name: 'About',
+        name: navLabels['about'] || 'About',
         url: 'about',
         children: [
           ['Our Story', 'about/our-story'],
@@ -161,35 +216,59 @@
           ...(customByParent['about'] || [])
         ]
       },
-      ...topCustomMenus
+      ...topCustomMenus,
+      ...customNavItems
     ];
 
-    return baseMenus;
+    return baseMenus.filter(m => !hiddenSet.has(m.key));
   }
 
   function header() {
     const st = CMS.getState();
+    const s = st.settings || {};
     const menus = getMenus();
-    return `<header class="site-header">
+    const live = isLiveEdit();
+    const logoSrc = s.brandLogo || (A + 'niletrails-logo.png');
+    const secText = s.headerSecondaryText || 'Nubian & Nile';
+    const secUrl = s.headerSecondaryUrl || 'beyond-the-nile/nubian-and-the-nile';
+    const priText = s.headerPrimaryText || 'Plan your journey';
+    const priUrl = s.headerPrimaryUrl || 'plan-your-journey';
+
+    return `<header class="site-header ${live ? 'is-live-edit' : ''}">
+      ${live ? `
+        <div class="nt-live-toolbar" role="toolbar" aria-label="أدوات التحرير المباشر">
+          <span class="nt-live-toolbar-status"><strong>● وضع التحرير المباشر</strong> <small>اضغط على "✏ تعديل" بجانب أي جزء لتعديله فوراً</small></span>
+          <div class="nt-live-toolbar-actions">
+            <button type="button" class="nt-live-btn" data-live-edit-sec="header">☰ الهيدر واللوجو</button>
+            <button type="button" class="nt-live-btn" data-live-edit-sec="theme">🎨 الألوان</button>
+            <button type="button" class="nt-live-btn" data-live-edit-sec="footer">⬇ الفوتر</button>
+            <a href="${p('admin')}" class="nt-live-btn">⚙ لوحة التحكم الكاملة</a>
+            <button type="button" class="nt-live-btn is-exit" data-toggle-live-edit="false">✕ إنهاء التحرير</button>
+          </div>
+        </div>
+      ` : ''}
       <div class="header-inner wrap">
-        <a class="logo" href="${p('')}" aria-label="${esc(st.settings?.brandName || 'NileTrails')} homepage">
-          ${photo(A + 'niletrails-logo.png', (st.settings?.brandName || 'NileTrails') + ' — Sailing the Nile')}
+        <a class="logo" href="${p('')}" aria-label="${esc(s.brandName || 'NileTrails')} homepage">
+          ${photo(logoSrc, (s.brandName || 'NileTrails') + ' — Sailing the Nile', '', true)}
         </a>
         <nav class="desktop-nav" aria-label="Main navigation">
           ${menus.map(m => `
             <div class="nav-group">
-              <a class="nav-link" href="${p(m.url)}">${esc(m.name)}<span class="chevron">⌄</span></a>
-              <div class="mega-menu">
-                <div class="menu-overline">Explore ${esc(m.name)}</div>
-                ${m.children.map(([title, url]) => `<a href="${p(url)}">${esc(title)}<span>↗</span></a>`).join('')}
-              </div>
+              <a class="nav-link" href="${p(m.url)}">${esc(m.name)}${m.children?.length > 1 ? '<span class="chevron">⌄</span>' : ''}</a>
+              ${m.children?.length ? `
+                <div class="mega-menu">
+                  <div class="menu-overline">Explore ${esc(m.name)}</div>
+                  ${m.children.map(([title, url]) => `<a href="${p(url)}">${esc(title)}<span>↗</span></a>`).join('')}
+                </div>
+              ` : ''}
             </div>
           `).join('')}
         </nav>
         <div class="nav-actions">
+          ${live ? `<button type="button" class="nt-live-btn is-primary" data-live-edit-sec="header">✏ تعديل الهيدر</button>` : ''}
           <a href="${p('admin')}" class="nav-admin-pill" title="Open Admin Control Panel">⚙ Admin CMS</a>
-          <a href="${p('beyond-the-nile/nubian-and-the-nile')}" class="nav-contact" aria-label="Nubian and the Nile">Nubian & Nile</a>
-          <a href="${p('plan-your-journey')}" class="nav-plan">Plan your journey <span>↗</span></a>
+          <a href="${p(secUrl)}" class="nav-contact" aria-label="${esc(secText)}">${esc(secText)}</a>
+          <a href="${p(priUrl)}" class="nav-plan">${esc(priText)} <span>↗</span></a>
           <button type="button" id="menu-toggle" class="menu-toggle" aria-label="Open navigation" aria-expanded="false">☰</button>
         </div>
       </div>
@@ -200,12 +279,14 @@
               <summary>${esc(m.name)}<span>+</span></summary>
               <div class="mobile-links">
                 <a href="${p(m.url)}">Overview ↗</a>
-                ${m.children.map(([n, u]) => `<a href="${p(u)}">${esc(n)}</a>`).join('')}
+                ${(m.children || []).map(([n, u]) => `<a href="${p(u)}">${esc(n)}</a>`).join('')}
               </div>
             </details>
           `).join('')}
-          <a class="mobile-contact" href="${p('admin')}" style="background:#bd9867;color:#092434">⚙ لوحة التحكم (Admin Dashboard)</a>
-          <a class="mobile-contact" href="${p('plan-your-journey')}">Plan Your Journey ↗</a>
+          <a class="mobile-contact" href="${p(secUrl)}">${esc(secText)} ↗</a>
+          <a class="mobile-contact" href="${p(priUrl)}">${esc(priText)} ↗</a>
+          <a class="mobile-contact" href="${p('admin')}" style="background:var(--gold);color:#092434">⚙ لوحة التحكم (Admin Dashboard)</a>
+          <button type="button" class="mobile-contact" data-toggle-live-edit="${live ? 'false' : 'true'}" style="background:#183d52;color:#fff;border:0;width:100%;text-align:left">${live ? '✕ إيقاف التحرير المباشر' : '✏ تحرير الموقع مباشرة'}</button>
         </nav>
       </div>
     </header>`;
@@ -213,21 +294,30 @@
 
   function footer() {
     const st = CMS.getState();
+    const s = st.settings || {};
+    const live = isLiveEdit();
     const footerCustomPages = (st.customPages || []).filter(cp => cp.enabled !== false && cp.showInFooter);
     const bookingsCount = (st.enquiries || []).length;
+    const ctaEyebrow = s.footerCtaEyebrow || 'THE NEXT CHAPTER IS YOURS';
+    const ctaTitle = s.footerCtaTitle || 'Let the river lead <em>the way.</em>';
+    const ctaBtnText = s.footerCtaBtnText || 'Design your journey';
+    const ctaBtnUrl = s.footerCtaBtnUrl || 'plan-your-journey';
+    const footerAbout = s.footerAbout || 'Thoughtful Nile cruises, curated sailing programs, traditional dahabiya vessels and guided sightseeing through Egypt.';
+    const footerConv = s.footerConvText || 'No journey is exactly the same. Select a cruise program, add guided sightseeing & extensions, or tell us what you have in mind.';
+    const logoSrc = s.brandLogo || (A + 'niletrails-logo.png');
 
-    return `<footer class="site-footer">
+    const footerHtml = `<footer class="site-footer">
       <div class="wrap">
         <div class="footer-pre">
-          <span>THE NEXT CHAPTER IS YOURS</span>
-          <h2>Let the river lead <em>the way.</em></h2>
-          ${button('Design your journey', 'plan-your-journey', 'btn-light')}
+          <span>${esc(ctaEyebrow)}</span>
+          <h2>${ctaTitle}</h2>
+          ${button(esc(ctaBtnText), ctaBtnUrl, 'btn-light')}
         </div>
         <div class="footer-grid">
           <div class="footer-intro">
-            <div class="footer-logo">${photo(A + 'niletrails-logo.png', st.settings?.brandName || 'NileTrails')}</div>
-            <p>Thoughtful Nile cruises, curated sailing programs, traditional dahabiya vessels and guided sightseeing through Egypt.</p>
-            <small>${esc(st.settings?.tagline || 'SAILING THE NILE · DISCOVERING EGYPT')}</small>
+            <div class="footer-logo">${photo(logoSrc, s.brandName || 'NileTrails')}</div>
+            <p>${esc(footerAbout)}</p>
+            <small>${esc(s.tagline || 'SAILING THE NILE · DISCOVERING EGYPT')}</small>
           </div>
           <div>
             <h4>DISCOVER</h4>
@@ -248,13 +338,20 @@
           </div>
           <div>
             <h4>START A CONVERSATION</h4>
-            <p>No journey is exactly the same. Select a cruise program, add guided sightseeing & extensions, or tell us what you have in mind.</p>
-            ${st.settings?.contactEmail ? `<p style="font-size:12px;color:#dfbc87;margin-bottom:6px">✉ ${esc(st.settings.contactEmail)}</p>` : ''}
+            <p>${esc(footerConv)}</p>
+            ${s.contactEmail ? `<p style="font-size:12px;color:#dfbc87;margin-bottom:6px">✉ ${esc(s.contactEmail)}</p>` : ''}
+            ${s.contactPhone ? `<p style="font-size:12px;color:#dfbc87;margin-bottom:8px">☎ ${esc(s.contactPhone)}</p>` : ''}
+            ${(s.socialInstagram || s.socialFacebook) ? `
+              <div style="display:flex;gap:12px;margin-bottom:10px;font-size:12px">
+                ${s.socialInstagram ? `<a href="${esc(s.socialInstagram)}" target="_blank" rel="noopener noreferrer" style="color:#dfbc87">Instagram ↗</a>` : ''}
+                ${s.socialFacebook ? `<a href="${esc(s.socialFacebook)}" target="_blank" rel="noopener noreferrer" style="color:#dfbc87">Facebook ↗</a>` : ''}
+              </div>
+            ` : ''}
             ${arrow('Send an enquiry', 'contact')}
           </div>
         </div>
         <div class="footer-bottom">
-          <span>© ${new Date().getFullYear()} ${esc(st.settings?.brandName || 'NileTrails')}. All rights reserved.</span>
+          <span>© ${new Date().getFullYear()} ${esc(s.brandName || 'NileTrails')}. All rights reserved.</span>
           <span>
             <a href="${p('privacy-policy')}">Privacy</a>
             <a href="${p('terms-and-conditions')}">Terms</a>
@@ -263,9 +360,15 @@
           </span>
         </div>
       </div>
-    </footer>
-    ${st.settings?.showAdminBar !== false ? `
+    </footer>`;
+
+    return `
+    ${liveSecWrap('footer', 'الفوتر ومعلومات التواصل والسوشيال', footerHtml)}
+    ${s.showAdminBar !== false ? `
       <div class="floating-admin-bar" role="region" aria-label="Admin Quick Access">
+        <button type="button" class="fab-edit-btn ${live ? 'active' : ''}" data-toggle-live-edit="${live ? 'false' : 'true'}">
+          <span>${live ? '✕ إيقاف التحرير المباشر' : '✏ تحرير الموقع مباشرة'}</span>
+        </button>
         <a href="${p('admin')}" class="fab-admin-btn">
           <span class="fab-dot"></span>
           <span>لوحة التحكم · Admin CMS</span>
@@ -298,13 +401,14 @@
     const st = CMS.getState();
     const cur = st.settings?.currencySymbol || '$';
     const showAddToggle = Boolean(opts.showAddToggle);
+    const eager = Boolean(opts.eager);
     const seeMoreUrl = `beyond-the-nile/nubian-and-the-nile/${place.slug}`;
 
     return `
       <article class="sight-place-card" data-location="${esc(place.location)}">
         <div class="spc-photo">
           <a href="${p(seeMoreUrl)}">
-            ${photo(place.image, place.title)}
+            ${photo(place.image, place.title, '', eager)}
           </a>
           <span class="spc-loc-badge">📍 ${esc(place.location)}</span>
           ${place.duration ? `<span class="spc-dur-badge">⏱ ${esc(place.duration)}</span>` : ''}
@@ -338,7 +442,7 @@
     `;
   }
 
-  function miniCard(item, kind) {
+  function miniCard(item, kind, eager = false) {
     const st = CMS.getState();
     const cur = st.settings?.currencySymbol || '$';
     const isJ = kind === 'journey';
@@ -352,7 +456,7 @@
 
     return `<article class="collection-card">
       <a class="card-photo" href="${p(slug)}">
-        ${photo(item.image || item.heroImage, name)}
+        ${photo(item.image || item.heroImage, name, '', eager)}
         ${progsCount > 0 ? `<span class="card-prog-badge">${progsCount} Programs (3N · 4N · 7N)</span>` : ''}
         <span class="card-hover">View itinerary, facilities & book ↗</span>
       </a>
@@ -381,13 +485,14 @@
     </article>`;
   }
 
-  function experienceCard(image, n, name, text, href, classname = '') {
-    return `<a class="experience-tile ${classname}" href="${p(href)}"><div class="tile-image">${photo(image, name)}</div><div class="tile-shade"></div><div class="tile-top">0${n}<span>EXPERIENCE</span></div><div class="tile-bottom"><h3>${name}</h3><p>${text}</p><span>Explore this way <b>↗</b></span></div></a>`;
+  function experienceCard(image, n, name, text, href, classname = '', eager = false) {
+    return `<a class="experience-tile ${classname}" href="${p(href)}"><div class="tile-image">${photo(image, name, '', eager)}</div><div class="tile-shade"></div><div class="tile-top">0${n}<span>EXPERIENCE</span></div><div class="tile-bottom"><h3>${name}</h3><p>${text}</p><span>Explore this way <b>↗</b></span></div></a>`;
   }
 
   function home() {
     const st = CMS.getState();
     const hc = st.homeConfig || {};
+    const live = isLiveEdit();
     const cur = st.settings?.currencySymbol || '$';
     const featuredCruises = [
       ...(st.cruises || []).filter(c => c.enabled !== false && c.showOnHome),
@@ -398,12 +503,23 @@
     const activeStories = (st.stories || []).filter(s => s.enabled !== false);
     const sightseeing = (st.sightseeingPlaces || []).filter(s => s.enabled !== false);
     const heroVideoSrc = hc.heroVideo || V + 'hero-main.mp4';
+    const experiencesList = (Array.isArray(hc.experiences) && hc.experiences.length) ? hc.experiences : [
+      { id: 'exp-1', title: 'Nile Cruises', desc: 'Curated 3, 4 & 7-night programs with onboard facilities & private Egyptologist.', url: 'nile-cruises', image: IMG.cruise },
+      { id: 'exp-2', title: 'Dahabiyas', desc: 'Tradition, intimacy and the unhurried art of wind-powered sailing.', url: 'dahabiyas', image: IMG.sailing },
+      { id: 'exp-3', title: 'Nubian & the Nile', desc: '15 iconic temples, tombs & Nubian villages with private tour guide.', url: 'beyond-the-nile/nubian-and-the-nile', image: IMG.temple },
+      { id: 'exp-4', title: 'Beyond the Nile', desc: 'Cairo, Red Sea, White Desert, Oases and extraordinary stories.', url: 'beyond-the-nile', image: IMG.temple }
+    ];
+    const sigPoints = Array.isArray(hc.signaturePoints) && hc.signaturePoints.length ? hc.signaturePoints : [
+      '01 / 3, 4 & 7-Night programs with interactive route maps',
+      '02 / 15 guided sightseeing places you can add to your journey',
+      '03 / Full onboard cruise facilities & private Egyptologist guides'
+    ];
 
     const sectionRenderers = {
       search: () => `
         <div class="search-wrap wrap">
           <form id="quick-search" class="search-bar" aria-label="Find an experience">
-            <div class="search-caption">DISCOVER YOUR WAY<span>Where shall we take you?</span></div>
+            <div class="search-caption">${esc(hc.searchCaption || 'DISCOVER YOUR WAY')}<span>${esc(hc.searchQuestion || 'Where shall we take you?')}</span></div>
             <label for="quick-type">EXPERIENCE
               <select id="quick-type" name="type">
                 <option value="nile-cruises">Nile Cruises & Programs</option>
@@ -428,75 +544,70 @@
                 <option value="7">7 nights (Round Trip)</option>
               </select>
             </label>
-            <button class="search-button" type="submit">Discover <span>↗</span></button>
+            <button class="search-button" type="submit">${esc(hc.searchBtnText || 'Discover')} <span>↗</span></button>
           </form>
         </div>`,
       intro: () => `
         <section class="intro-band">
           <div class="wrap intro-band-inner">
-            <div>${label('THE NILETRAILS PHILOSOPHY')}<h2>More than seeing Egypt.<br><em>Feeling its rhythm.</em></h2></div>
-            <div><p>Every Nile cruise and dahabiya features curated 3, 4 & 7-night programs, full onboard facilities, private Egyptologist sightseeing tours, and seamless add-on extensions across Egypt.</p>${arrow('Explore Nubian & the Nile Sightseeing', 'beyond-the-nile/nubian-and-the-nile')}</div>
+            <div>${label(esc(hc.introEyebrow || 'THE NILETRAILS PHILOSOPHY'))}<h2>${hc.introTitle || 'More than seeing Egypt.<br><em>Feeling its rhythm.</em>'}</h2></div>
+            <div><p>${esc(hc.introBody || 'Every Nile cruise and dahabiya features curated 3, 4 & 7-night programs, full onboard facilities, private Egyptologist sightseeing tours, and seamless add-on extensions across Egypt.')}</p>${arrow(esc(hc.introLinkText || 'Explore Nubian & the Nile Sightseeing'), hc.introLinkUrl || 'beyond-the-nile/nubian-and-the-nile')}</div>
           </div>
         </section>`,
       experiences: () => `
         <section class="experience-section wrap section-space">
-          ${sectionTitle('DISCOVER YOUR WAY', 'One river. <em>Many ways to wonder.</em>', 'Choose how you want to experience Egypt — then select your sailing program, guided sightseeing and custom add-ons.')}
+          ${sectionTitle(esc(hc.expEyebrow || 'DISCOVER YOUR WAY'), hc.expTitle || 'One river. <em>Many ways to wonder.</em>', esc(hc.expSub || 'Choose how you want to experience Egypt — then select your sailing program, guided sightseeing and custom add-ons.'))}
           <div class="experience-layout">
-            ${experienceCard(IMG.cruise, 1, 'Nile Cruises', 'Curated 3, 4 & 7-night programs with onboard facilities & private Egyptologist.', 'nile-cruises', 'tile-large')}
-            ${experienceCard(IMG.sailing, 2, 'Dahabiyas', 'Tradition, intimacy and the unhurried art of wind-powered sailing.', 'dahabiyas')}
-            ${experienceCard(IMG.temple, 3, 'Nubian & the Nile', '15 iconic temples, tombs & Nubian villages with private tour guide.', 'beyond-the-nile/nubian-and-the-nile')}
-            ${experienceCard(IMG.temple, 4, 'Beyond the Nile', 'Cairo, Red Sea, White Desert, Oases and extraordinary stories.', 'beyond-the-nile')}
+            ${experiencesList.map((exp, idx) => experienceCard(exp.image || IMG.sailing, idx + 1, esc(exp.title), esc(exp.desc), exp.url || 'nile-cruises', idx === 0 ? 'tile-large' : '', true)).join('')}
           </div>
         </section>`,
       featuredCruises: () => featuredCruises.length ? `
         <section class="featured-section section-space">
           <div class="wrap">
-            ${sectionTitle('THE NILE COLLECTION & PROGRAMS', 'The journey begins <em>on the water.</em>', 'Select any vessel below to view its 3, 4 & 7-night programs, route map, cruise facilities, guided sightseeing add-ons and booking form.', arrow('View all Nile Cruises', 'nile-cruises'))}
+            ${sectionTitle(esc(hc.cruisesEyebrow || 'THE NILE COLLECTION & PROGRAMS'), hc.cruisesTitle || 'The journey begins <em>on the water.</em>', esc(hc.cruisesSub || 'Select any vessel below to view its 3, 4 & 7-night programs, route map, cruise facilities, guided sightseeing add-ons and booking form.'), arrow('View all Nile Cruises', 'nile-cruises'))}
             <div class="card-grid three">
-              ${featuredCruises.slice(0, 6).map(x => miniCard(x, x.kind || 'cruise')).join('')}
+              ${featuredCruises.slice(0, 6).map(x => miniCard(x, x.kind || 'cruise', true)).join('')}
             </div>
           </div>
         </section>` : '',
       sightseeingHome: () => sightseeing.length ? `
         <section class="wrap section-space">
-          ${sectionTitle('BEYOND THE NILE · NUBIAN AND THE NILE', 'Main Places to Visit <em>During a Nile Cruise.</em>', 'Explore the iconic temples, royal tombs and Nubian heritage sites between Luxor and Aswan — each can be added to your journey with a private Egyptologist tour guide.', arrow('View All 15 Places in Nubian & the Nile', 'beyond-the-nile/nubian-and-the-nile'))}
+          ${sectionTitle(esc(hc.sightEyebrow || 'BEYOND THE NILE · NUBIAN AND THE NILE'), hc.sightTitle || 'Main Places to Visit <em>During a Nile Cruise.</em>', esc(hc.sightSub || 'Explore the iconic temples, royal tombs and Nubian heritage sites between Luxor and Aswan — each can be added to your journey with a private Egyptologist tour guide.'), arrow('View All 15 Places in Nubian & the Nile', 'beyond-the-nile/nubian-and-the-nile'))}
           <div class="sight-cards-grid">
-            ${sightseeing.slice(0, 6).map(pl => renderSightseeingCard(pl, { showAddToggle: false })).join('')}
+            ${sightseeing.slice(0, 6).map(pl => renderSightseeingCard(pl, { showAddToggle: false, eager: true })).join('')}
           </div>
           <div style="text-align:center;margin-top:32px">
-            ${button('Explore All 15 Sightseeing Places & Prices', 'beyond-the-nile/nubian-and-the-nile', 'btn-gold')}
+            ${button(esc(hc.sightBtnText || 'Explore All 15 Sightseeing Places & Prices'), 'beyond-the-nile/nubian-and-the-nile', 'btn-gold')}
           </div>
         </section>` : '',
       customPagesHome: () => homeCustomPages.length ? `
         <section class="wrap section-space">
           ${sectionTitle('CURATED COLLECTIONS', 'Special <em>experiences.</em>', 'Explore dedicated pages and custom collections created for your journey.')}
           <div class="card-grid ${homeCustomPages.length === 1 ? 'two' : 'three'}">
-            ${homeCustomPages.map(cp => miniCard(cp, 'custom-page')).join('')}
+            ${homeCustomPages.map(cp => miniCard(cp, 'custom-page', true)).join('')}
           </div>
         </section>` : '',
       signature: () => `
         <section class="signature-section">
-          <div class="signature-image">${photo(IMG.sailing, 'Traditional dahabiya sailing on the Nile')}</div>
+          <div class="signature-image">${photo(hc.signatureImage || IMG.sailing, 'Traditional dahabiya sailing on the Nile', '', true)}</div>
           <div class="signature-copy">
-            ${label('A DIFFERENT WAY TO TRAVEL')}
-            <h2>Let the days<br><em>unfold naturally.</em></h2>
-            <p>There is something transformative about travelling at the pace of the river. Wake to quiet mornings, linger over the landscape and customize your voyage with guided sightseeing and seamless extensions.</p>
+            ${label(esc(hc.signatureEyebrow || 'A DIFFERENT WAY TO TRAVEL'))}
+            <h2>${hc.signatureTitle || 'Let the days<br><em>unfold naturally.</em>'}</h2>
+            <p>${esc(hc.signatureBody || 'There is something transformative about travelling at the pace of the river. Wake to quiet mornings, linger over the landscape and customize your voyage with guided sightseeing and seamless extensions.')}</p>
             <div class="signature-points">
-              <span>01 / 3, 4 & 7-Night programs with interactive route maps</span>
-              <span>02 / 15 guided sightseeing places you can add to your journey</span>
-              <span>03 / Full onboard cruise facilities & private Egyptologist guides</span>
+              ${sigPoints.map(pt => `<span>${esc(pt)}</span>`).join('')}
             </div>
-            ${button('Discover Dahabiya Sailing', 'dahabiyas', 'btn-outline')}
+            ${button(esc(hc.signatureBtnText || 'Discover Dahabiya Sailing'), hc.signatureBtnUrl || 'dahabiyas', 'btn-outline')}
           </div>
         </section>`,
       featuredAddons: () => homeAddons.length ? `
         <section class="wrap section-space">
-          ${sectionTitle('ENHANCE YOUR VOYAGE', 'Popular Add-ons & <em>Program Extensions.</em>', 'When booking any cruise program, you can effortlessly attach these multi-day extensions and signature experiences.')}
+          ${sectionTitle(esc(hc.addonsEyebrow || 'ENHANCE YOUR VOYAGE'), hc.addonsTitle || 'Popular Add-ons & <em>Program Extensions.</em>', esc(hc.addonsSub || 'When booking any cruise program, you can effortlessly attach these multi-day extensions and signature experiences.'))}
           <div class="card-grid three">
             ${homeAddons.map(ad => `
               <article class="collection-card addon-home-card">
                 <div class="card-photo">
-                  ${photo(ad.image, ad.title)}
+                  ${photo(ad.image, ad.title, '', true)}
                   <span class="card-prog-badge">${esc(ad.duration)}</span>
                 </div>
                 <div class="card-content">
@@ -516,40 +627,41 @@
         <section class="journey-feature">
           <div class="wrap journey-feature-inner">
             <div class="journey-feature-intro">
-              ${label('GO BEYOND THE ORDINARY')}
-              <h2>Egypt is a story.<br><em>Make it yours.</em></h2>
-              <p>Our Journeys are not rigid packages. They are thoughtful starting points for the experiences, landscapes and connections you want to make.</p>
-              ${button('Explore Journeys', 'journeys', 'btn-gold')}
+              ${label(esc(hc.journeysEyebrow || 'GO BEYOND THE ORDINARY'))}
+              <h2>${hc.journeysTitle || 'Egypt is a story.<br><em>Make it yours.</em>'}</h2>
+              <p>${esc(hc.journeysBody || 'Our Journeys are not rigid packages. They are thoughtful starting points for the experiences, landscapes and connections you want to make.')}</p>
+              ${button(esc(hc.journeysBtnText || 'Explore Journeys'), hc.journeysBtnUrl || 'journeys', 'btn-gold')}
             </div>
             <div class="journey-feature-tiles">
-              <a href="${p('journeys/classic-nile-journey')}" class="journey-feature-card">${photo(IMG.temple, 'Ancient Egyptian temple')}<div><small>01 / THE ESSENTIALS</small><h3>Classic Nile Journey</h3><span>Discover the route ↗</span></div></a>
-              <a href="${p('beyond-the-nile/nubian-and-the-nile')}" class="journey-feature-card lower">${photo(IMG.sailing, 'Sailing on the Nile')}<div><small>02 / BEYOND THE NILE</small><h3>Nubian & the Nile Sightseeing</h3><span>Explore 15 iconic places ↗</span></div></a>
+              <a href="${p('journeys/classic-nile-journey')}" class="journey-feature-card">${photo(hc.journeysCard1Image || IMG.temple, hc.journeysCard1Title || 'Classic Nile Journey')}<div><small>${esc(hc.journeysCard1Sub || '01 / THE ESSENTIALS')}</small><h3>${esc(hc.journeysCard1Title || 'Classic Nile Journey')}</h3><span>Discover the route ↗</span></div></a>
+              <a href="${p('beyond-the-nile/nubian-and-the-nile')}" class="journey-feature-card lower">${photo(hc.journeysCard2Image || IMG.sailing, hc.journeysCard2Title || 'Nubian & the Nile Sightseeing')}<div><small>${esc(hc.journeysCard2Sub || '02 / BEYOND THE NILE')}</small><h3>${esc(hc.journeysCard2Title || 'Nubian & the Nile Sightseeing')}</h3><span>Explore 15 iconic places ↗</span></div></a>
             </div>
           </div>
         </section>`,
       storiesSection: () => activeStories.length ? `
         <section class="stories-section wrap section-space">
-          ${sectionTitle('FROM THE JOURNAL', 'Stories worth <em>taking with you.</em>', 'Guides, ideas and inspiration for seeing Egypt with fresh eyes.', arrow('Visit Nile Stories', 'nile-stories'))}
+          ${sectionTitle(esc(hc.storiesEyebrow || 'FROM THE JOURNAL'), hc.storiesTitle || 'Stories worth <em>taking with you.</em>', esc(hc.storiesSub || 'Guides, ideas and inspiration for seeing Egypt with fresh eyes.'), arrow('Visit Nile Stories', 'nile-stories'))}
           <div class="story-row">
             ${activeStories.slice(0, 3).map(s => `<a href="${p('nile-stories/' + s.slug)}" class="story-tile">${photo(s.image, s.title)}<div><span>${esc(s.category)}</span><h3>${esc(s.title)}</h3><small>Read the story ↗</small></div></a>`).join('')}
           </div>
         </section>` : '',
       closingBanner: () => `
-        <section class="closing-banner" style="--closing-img:url('${IMG.temple}')">
+        <section class="closing-banner" style="--closing-img:url('${hc.closingImage || IMG.temple}')">
           <div class="wrap">
             <div>
-              ${label('MADE FOR YOUR MOMENTS')}
-              <h2>Where will your<br><em>story take you?</em></h2>
-              <p>Tell us the places you dream about. We will help design the journey that feels right for you.</p>
-              ${button('Plan Your Journey', 'plan-your-journey', 'btn-gold')}
+              ${label(esc(hc.closingEyebrow || 'MADE FOR YOUR MOMENTS'))}
+              <h2>${hc.closingTitle || 'Where will your<br><em>story take you?</em>'}</h2>
+              <p>${esc(hc.closingBody || 'Tell us the places you dream about. We will help design the journey that feels right for you.')}</p>
+              ${button(esc(hc.closingBtnText || 'Plan Your Journey'), hc.closingBtnUrl || 'plan-your-journey', 'btn-gold')}
             </div>
           </div>
         </section>`
     };
 
-    const orderedSections = (hc.sections || []).filter(s => s.enabled !== false);
+    const allSections = hc.sections || hc.sectionsOrder || [];
+    const sectionsToRender = live ? allSections : allSections.filter(s => s.enabled !== false);
 
-    return `<section class="hero-home has-video" style="--hero-img:url('${hc.heroImage || IMG.sailing}')">
+    const heroHtml = `<section class="hero-home has-video" style="--hero-img:url('${hc.heroImage || IMG.sailing}')">
       ${renderHeroVideoBg(heroVideoSrc, hc.heroImage || IMG.sailing)}
       <div class="hero-gradient"></div>
       <div class="wrap hero-home-inner">
@@ -568,8 +680,18 @@
           <div class="hero-foot-text">SILENT AUTOPLAY CINEMA · LUXOR TO ASWAN</div>
         </div>
       </div>
-    </section>
-    ${orderedSections.map(sec => sectionRenderers[sec.id] ? sectionRenderers[sec.id]() : '').join('')}`;
+    </section>`;
+
+    return `${liveSecWrap('hero', 'واجهة البداية الرئيسية (Hero & Video)', heroHtml)}
+    ${sectionsToRender.map(sec => {
+      const html = sectionRenderers[sec.id] ? sectionRenderers[sec.id]() : '';
+      if (!html && sec.enabled !== false) return '';
+      return liveSecWrap(sec.id, sec.label || sec.id, html, {
+        isHomeSec: true,
+        isHidden: sec.enabled === false,
+        adminTab: !sec.enabled ? '' : (sec.id === 'customPagesHome' ? 'pages' : '')
+      });
+    }).join('')}`;
   }
 
   function filterBar(type, selected = '') {
@@ -1648,17 +1770,32 @@
   }
 
   function about(page = '') {
-    if (page === 'our-team') return `${pageHero('Our Team', 'ABOUT NILETRAILS', 'Real people who care about how you experience Egypt.', IMG.temple)}<section class="wrap section-space editorial-lede">${label('THE PEOPLE BEHIND THE JOURNEYS')}<h2>Travel is <em>personal.</em></h2><p>We believe thoughtful journeys begin with people who listen. Our team profiles and verified credentials will be published once confirmed by NileTrails.</p>${button('Meet your travel designer', 'contact', 'btn-outline')}</section>`;
-    if (page === 'why-niletrails') return `${pageHero('Why NileTrails', 'ABOUT NILETRAILS', 'Thoughtful choices, memorable experiences, genuine discovery.', IMG.sailing)}<section class="wrap section-space editorial-lede">${label('WHAT WE BELIEVE')}<h2>Thoughtful travel,<br><em>beautifully considered.</em></h2><p>From choosing the right style of Nile sailing to connecting your favourite destinations, we focus on experiences that feel personal, unhurried and full of meaning.</p><div class="three-notes"><div><b>01</b><h3>River-led experiences</h3><p>The Nile connects our cruises, dahabiyas and journeys.</p></div><div><b>02</b><h3>Choice without pressure</h3><p>A range of travel styles, not a single definition of luxury.</p></div><div><b>03</b><h3>Designed around you</h3><p>Your interests and your pace shape the journey.</p></div></div></section>`;
-    return `${pageHero(page === 'our-story' ? 'Our Story' : 'About NileTrails', 'ABOUT NILETRAILS', 'A different perspective on Egypt, with the river at its heart.', IMG.sailing)}<section class="about-split wrap section-space"><div class="about-image">${photo(IMG.temple, 'Egyptian temple at golden hour')}</div><div>${label('WHY WE EXIST')}<h2>Egypt is more than a place to visit.<br><em>It is a journey to feel.</em></h2><p>NileTrails is built around a simple idea: the most memorable travel happens when people, place and pace come together.</p><p>Our focus begins with the Nile — its remarkable landscapes, timeless cultures and the many ways to experience them — then extends across Egypt through thoughtfully designed journeys.</p>${button('Why Travel With Us', 'about/why-niletrails', 'btn-outline')}</div></section><section class="belief-section wrap">${sectionTitle('THE NILETRAILS APPROACH', 'Our approach to <em>exploring Egypt.</em>')}<div class="three-notes"><div><b>01</b><h3>Rooted in the Nile</h3><p>The river is our starting point, not the limit of what you can discover.</p></div><div><b>02</b><h3>Different ways to sail</h3><p>From comfortable cruises to traditional dahabiyas and private experiences.</p></div><div><b>03</b><h3>Personal from the start</h3><p>A journey designed around your interests, schedule and aspirations.</p></div></div></section>`;
+    const spAll = CMS.getState().staticPages || {};
+    if (page === 'our-team') {
+      const pData = spAll['our-team'] || {};
+      const html = `${pageHero(esc(pData.title || 'Our Team'), esc(pData.eyebrow || 'ABOUT NILETRAILS'), esc(pData.subtitle || 'Real people who care about how you experience Egypt.'), pData.heroImage || IMG.temple, pData.heroVideo || '')}<section class="wrap section-space editorial-lede">${label(esc(pData.sectionEyebrow || 'THE PEOPLE BEHIND THE JOURNEYS'))}<h2>${pData.heading || 'Travel is <em>personal.</em>'}</h2><p>${esc(pData.body1 || 'We believe thoughtful journeys begin with people who listen. Our team profiles and verified credentials will be published once confirmed by NileTrails.')}</p>${pData.body2 ? `<p>${esc(pData.body2)}</p>` : ''}${button(esc(pData.ctaText || 'Meet your travel designer'), pData.ctaUrl || 'contact', 'btn-outline')}</section>`;
+      return liveSecWrap('static:our-team', 'تحرير صفحة: Our Team', html);
+    }
+    if (page === 'why-niletrails') {
+      const pData = spAll['why-niletrails'] || {};
+      const html = `${pageHero(esc(pData.title || 'Why NileTrails'), esc(pData.eyebrow || 'ABOUT NILETRAILS'), esc(pData.subtitle || 'Thoughtful choices, memorable experiences, genuine discovery.'), pData.heroImage || IMG.sailing, pData.heroVideo || '')}<section class="wrap section-space editorial-lede">${label(esc(pData.sectionEyebrow || 'WHAT WE BELIEVE'))}<h2>${pData.heading || 'Thoughtful travel,<br><em>beautifully considered.</em>'}</h2><p>${esc(pData.body1 || 'From choosing the right style of Nile sailing to connecting your favourite destinations, we focus on experiences that feel personal, unhurried and full of meaning.')}</p>${pData.body2 ? `<p>${esc(pData.body2)}</p>` : ''}<div class="three-notes"><div><b>01</b><h3>River-led experiences</h3><p>The Nile connects our cruises, dahabiyas and journeys.</p></div><div><b>02</b><h3>Choice without pressure</h3><p>A range of travel styles, not a single definition of luxury.</p></div><div><b>03</b><h3>Designed around you</h3><p>Your interests and your pace shape the journey.</p></div></div></section>`;
+      return liveSecWrap('static:why-niletrails', 'تحرير صفحة: Why NileTrails', html);
+    }
+    const pData = spAll['our-story'] || {};
+    const html = `${pageHero(esc(pData.title || (page === 'our-story' ? 'Our Story' : 'About NileTrails')), esc(pData.eyebrow || 'ABOUT NILETRAILS'), esc(pData.subtitle || 'A different perspective on Egypt, with the river at its heart.'), pData.heroImage || IMG.sailing, pData.heroVideo || '')}<section class="about-split wrap section-space"><div class="about-image">${photo(pData.sideImage || IMG.temple, 'Egyptian temple at golden hour')}</div><div>${label(esc(pData.sectionEyebrow || 'WHY WE EXIST'))}<h2>${pData.heading || 'Egypt is more than a place to visit.<br><em>It is a journey to feel.</em>'}</h2><p>${esc(pData.body1 || 'NileTrails is built around a simple idea: the most memorable travel happens when people, place and pace come together.')}</p>${pData.body2 !== '' ? `<p>${esc(pData.body2 || 'Our focus begins with the Nile — its remarkable landscapes, timeless cultures and the many ways to experience them — then extends across Egypt through thoughtfully designed journeys.')}</p>` : ''}${button(esc(pData.ctaText || 'Why Travel With Us'), pData.ctaUrl || 'about/why-niletrails', 'btn-outline')}</div></section><section class="belief-section wrap">${sectionTitle('THE NILETRAILS APPROACH', 'Our approach to <em>exploring Egypt.</em>')}<div class="three-notes"><div><b>01</b><h3>Rooted in the Nile</h3><p>The river is our starting point, not the limit of what you can discover.</p></div><div><b>02</b><h3>Different ways to sail</h3><p>From comfortable cruises to traditional dahabiyas and private experiences.</p></div><div><b>03</b><h3>Personal from the start</h3><p>A journey designed around your interests, schedule and aspirations.</p></div></div></section>`;
+    return liveSecWrap('static:our-story', 'تحرير صفحة: Our Story / About', html);
   }
 
   function travelInfo() {
-    return `${pageHero('Travel Information', 'BEFORE YOU GO', 'Thoughtful planning for a more enjoyable journey.', IMG.temple)}<section class="wrap section-space"><div class="editorial-lede">${label('PREPARE FOR EGYPT')}<h2>A little preparation.<br><em>A lot more discovery.</em></h2><p>These are general planning topics rather than legal or visa advice. Always verify current entry requirements, health guidance and travel conditions with official sources before departure.</p></div><div class="accordion travel-accordion">${[['When to visit', 'Egypt’s climate varies by region and season. Your ideal travel period depends on your preferred activities and tolerance for heat.'], ['Visas and entry', 'Entry requirements depend on your nationality and passport. Check the current requirements with official Egyptian authorities or your consulate.'], ['Packing for the Nile', 'Comfortable layers, sun protection, sensible walking shoes and respect for local customs are good starting points.'], ['Cruise routes and timings', 'Schedules, navigation conditions, vessel availability and sightseeing arrangements can vary. Confirm your departure details before booking.'], ['Travelling with family', 'Share the ages and interests of your group when enquiring so the pace and experience can be tailored.']].map(([a, b], i) => `<details ${i === 0 ? 'open' : ''}><summary>${a}<span>+</span></summary><p>${b}</p></details>`).join('')}</div></section>`;
+    const pData = (CMS.getState().staticPages || {})['travel-information'] || {};
+    const html = `${pageHero(esc(pData.title || 'Travel Information'), esc(pData.eyebrow || 'BEFORE YOU GO'), esc(pData.subtitle || 'Thoughtful planning for a more enjoyable journey.'), pData.heroImage || IMG.temple, pData.heroVideo || '')}<section class="wrap section-space"><div class="editorial-lede">${label(esc(pData.sectionEyebrow || 'PREPARE FOR EGYPT'))}<h2>${pData.heading || 'A little preparation.<br><em>A lot more discovery.</em>'}</h2><p>${esc(pData.body1 || 'These are general planning topics rather than legal or visa advice. Always verify current entry requirements, health guidance and travel conditions with official sources before departure.')}</p></div><div class="accordion travel-accordion">${[['When to visit', 'Egypt’s climate varies by region and season. Your ideal travel period depends on your preferred activities and tolerance for heat.'], ['Visas and entry', 'Entry requirements depend on your nationality and passport. Check the current requirements with official Egyptian authorities or your consulate.'], ['Packing for the Nile', 'Comfortable layers, sun protection, sensible walking shoes and respect for local customs are good starting points.'], ['Cruise routes and timings', 'Schedules, navigation conditions, vessel availability and sightseeing arrangements can vary. Confirm your departure details before booking.'], ['Travelling with family', 'Share the ages and interests of your group when enquiring so the pace and experience can be tailored.']].map(([a, b], i) => `<details ${i === 0 ? 'open' : ''}><summary>${a}<span>+</span></summary><p>${b}</p></details>`).join('')}</div></section>`;
+    return liveSecWrap('static:travel-information', 'تحرير صفحة: Travel Information', html);
   }
 
   function contact() {
-    return `${pageHero('Start a Conversation', 'CONTACT US', 'Tell us what you imagine. We’ll help shape the journey.', IMG.sailing)}<section class="wrap contact-layout section-space"><div class="contact-copy">${label('WE WOULD LOVE TO HEAR FROM YOU')}<h2>Every great journey<br><em>starts here.</em></h2><p>Whether you know exactly how you want to travel or are still exploring the possibilities, share a few details and let us start planning together.</p><div class="contact-note"><b>What happens next?</b><p>We review your preferences, discuss the possibilities and help you refine the right direction for your trip.</p></div></div><form id="contact-form" class="contact-form"><h3>Send an enquiry</h3><div class="two-fields"><label>Full name *<input name="name" autocomplete="name" required placeholder="Your full name"></label><label>Email address *<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label></div><div class="two-fields"><label>Nationality / Country<input name="nationality" list="contact-countries" placeholder="Your country"><datalist id="contact-countries">${WORLD_COUNTRIES.map(c => `<option value="${c}"></option>`).join('')}</datalist></label><label>Phone / WhatsApp<input name="phone" type="tel" autocomplete="tel" placeholder="+44 / +1 ..."></label></div><div class="two-fields"><label>Interested in<select name="interest"><option>Nile Cruises & Programs</option><option>Dahabiyas</option><option>Nubian & the Nile Sightseeing</option><option>Journeys</option><option>Custom Add-ons Package</option></select></label><label>Travel period<input type="month" name="period"></label></div><label>Your message *<textarea name="message" required rows="5" placeholder="Tell us a little about your ideas..."></textarea></label><label class="check-field"><input type="checkbox" required> I agree to be contacted about my enquiry. *</label><div id="contact-feedback" class="form-feedback" role="status"></div><button class="button btn-gold" type="submit">Send Enquiry <span>↗</span></button></form></section>`;
+    const pData = (CMS.getState().staticPages || {})['contact'] || {};
+    const html = `${pageHero(esc(pData.title || 'Start a Conversation'), esc(pData.eyebrow || 'CONTACT US'), esc(pData.subtitle || 'Tell us what you imagine. We’ll help shape the journey.'), pData.heroImage || IMG.sailing, pData.heroVideo || '')}<section class="wrap contact-layout section-space"><div class="contact-copy">${label(esc(pData.sectionEyebrow || 'WE WOULD LOVE TO HEAR FROM YOU'))}<h2>${pData.heading || 'Every great journey<br><em>starts here.</em>'}</h2><p>${esc(pData.body1 || 'Whether you know exactly how you want to travel or are still exploring the possibilities, share a few details and let us start planning together.')}</p><div class="contact-note"><b>What happens next?</b><p>${esc(pData.body2 || 'We review your preferences, discuss the possibilities and help you refine the right direction for your trip.')}</p></div></div><form id="contact-form" class="contact-form"><h3>Send an enquiry</h3><div class="two-fields"><label>Full name *<input name="name" autocomplete="name" required placeholder="Your full name"></label><label>Email address *<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label></div><div class="two-fields"><label>Nationality / Country<input name="nationality" list="contact-countries" placeholder="Your country"><datalist id="contact-countries">${WORLD_COUNTRIES.map(c => `<option value="${c}"></option>`).join('')}</datalist></label><label>Phone / WhatsApp<input name="phone" type="tel" autocomplete="tel" placeholder="+44 / +1 ..."></label></div><div class="two-fields"><label>Interested in<select name="interest"><option>Nile Cruises & Programs</option><option>Dahabiyas</option><option>Nubian & the Nile Sightseeing</option><option>Journeys</option><option>Custom Add-ons Package</option></select></label><label>Travel period<input type="month" name="period"></label></div><label>Your message *<textarea name="message" required rows="5" placeholder="Tell us a little about your ideas..."></textarea></label><label class="check-field"><input type="checkbox" required> I agree to be contacted about my enquiry. *</label><div id="contact-feedback" class="form-feedback" role="status"></div><button class="button btn-gold" type="submit">Send Enquiry <span>↗</span></button></form></section>`;
+    return liveSecWrap('static:contact', 'تحرير صفحة: Contact Us', html);
   }
 
   function plan() {
@@ -1674,11 +1811,16 @@
 
   function legal(t) {
     const privacy = t === 'privacy';
-    return `${pageHero(privacy ? 'Privacy Policy' : 'Terms & Conditions', privacy ? 'PRIVACY' : 'TERMS', 'Information about the website and its services.', IMG.temple)}<section class="wrap legal-body section-space"><h2>Publication placeholder</h2><p>This page is reserved for NileTrails’ reviewed ${privacy ? 'privacy policy' : 'booking and website terms'}.</p>${button('Contact NileTrails', 'contact', 'btn-outline')}</section>`;
+    const key = privacy ? 'privacy-policy' : 'terms-and-conditions';
+    const pData = (CMS.getState().staticPages || {})[key] || {};
+    const html = `${pageHero(esc(pData.title || (privacy ? 'Privacy Policy' : 'Terms & Conditions')), esc(pData.eyebrow || (privacy ? 'PRIVACY' : 'TERMS')), esc(pData.subtitle || 'Information about the website and its services.'), pData.heroImage || IMG.temple, pData.heroVideo || '')}<section class="wrap legal-body section-space"><h2>${pData.heading || 'Publication Information'}</h2><p>${esc(pData.body1 || `This page is reserved for NileTrails’ reviewed ${privacy ? 'privacy policy' : 'booking and website terms'}.`)}</p>${pData.body2 ? `<p>${esc(pData.body2)}</p>` : ''}${button('Contact NileTrails', 'contact', 'btn-outline')}</section>`;
+    return liveSecWrap('static:' + key, 'تحرير صفحة: ' + (privacy ? 'Privacy Policy' : 'Terms & Conditions'), html);
   }
 
   function whyDahabiya() {
-    return `${pageHero('Why Sail by Dahabiya?', 'THE DAHABIYA EXPERIENCE', 'Experience the Nile the traditional way — slowly, intimately and with care.', IMG.sailing, V + 'hero-dahabiya-1.mp4')}<section class="about-split wrap section-space"><div class="about-image">${photo(IMG.sailing, 'Sailing dahabiya on Nile')}</div><div>${label('THE ART OF SLOW TRAVEL')}<h2>Less rushing.<br><em>More remembering.</em></h2><p>For travellers who enjoy quieter moments, smaller vessels and a stronger connection to the river, the dahabiya offers an inspiring alternative to a conventional Nile cruise.</p><p>Explore luxury, deluxe and private sailing styles — then personalise the experience around you.</p>${button('Explore the Collection', 'dahabiyas', 'btn-outline')}</div></section>`;
+    const pData = (CMS.getState().staticPages || {})['why-dahabiya'] || {};
+    const html = `${pageHero(esc(pData.title || 'Why Sail by Dahabiya?'), esc(pData.eyebrow || 'THE DAHABIYA EXPERIENCE'), esc(pData.subtitle || 'Experience the Nile the traditional way — slowly, intimately and with care.'), pData.heroImage || IMG.sailing, pData.heroVideo || V + 'hero-dahabiya-1.mp4')}<section class="about-split wrap section-space"><div class="about-image">${photo(pData.sideImage || IMG.sailing, 'Sailing dahabiya on Nile')}</div><div>${label(esc(pData.sectionEyebrow || 'THE ART OF SLOW TRAVEL'))}<h2>${pData.heading || 'Less rushing.<br><em>More remembering.</em>'}</h2><p>${esc(pData.body1 || 'For travellers who enjoy quieter moments, smaller vessels and a stronger connection to the river, the dahabiya offers an inspiring alternative to a conventional Nile cruise.')}</p>${pData.body2 !== '' ? `<p>${esc(pData.body2 || 'Explore luxury, deluxe and private sailing styles — then personalise the experience around you.')}</p>` : ''}${button(esc(pData.ctaText || 'Explore the Collection'), pData.ctaUrl || 'dahabiyas', 'btn-outline')}</div></section>`;
+    return liveSecWrap('static:why-dahabiya', 'تحرير صفحة: Why Dahabiya', html);
   }
 
   function notfound() {
@@ -1744,6 +1886,7 @@
 
   function route() {
     const st = CMS.getState();
+    applyTheme(st);
     const raw = location.hash.replace(/^#\/?/, '').split('?')[0].replace(/^\/+|\/+$/g, '');
     const seg = raw ? raw.split('/') : [];
     let body = '', title = 'Sailing the Nile';
@@ -2242,7 +2385,50 @@
       toggle.textContent = open ? '☰' : '✕';
       panel.hidden = open;
     });
-    $$('.mobile-panel a').forEach(a => a.addEventListener('click', () => { if (panel) panel.hidden = true; }));
+    $$('.mobile-panel a, .mobile-panel button').forEach(a => a.addEventListener('click', () => { if (panel) panel.hidden = true; }));
+
+    // Live Visual Editor actions (on-site control)
+    $$('[data-toggle-live-edit]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const nextVal = btn.dataset.toggleLiveEdit === 'true';
+        window.NileTrailsAdmin?.setEditMode?.(nextVal);
+        route();
+      });
+    });
+
+    $$('[data-live-edit-sec]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        window.NileTrailsAdmin?.openLiveEditor?.(btn.dataset.liveEditSec, () => route());
+      });
+    });
+
+    $$('[data-live-sec-move]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const [secId, dirStr] = btn.dataset.liveSecMove.split(':');
+        await window.NileTrailsAdmin?.moveHomeSection?.(secId, Number(dirStr), () => route());
+      });
+    });
+
+    $$('[data-live-sec-hide]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        await window.NileTrailsAdmin?.toggleHomeSectionVisibility?.(btn.dataset.liveSecHide, () => route());
+      });
+    });
+
+    $$('[data-open-admin-tab]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        window.NileTrailsAdmin?.openTab?.(btn.dataset.openAdminTab);
+        location.hash = '#/admin';
+      });
+    });
 
     // Ensure all background videos play smoothly
     $$('.hero-bg-video').forEach(v => {

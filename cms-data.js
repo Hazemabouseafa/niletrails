@@ -58,7 +58,7 @@ window.NileTrailsCMS = (() => {
       guideIncluded: 'Private Licensed Egyptologist Guide + Entry Tickets + Transfers',
       price: 65,
       priceUnit: 'per person',
-      image: 'https://images.unsplash.com/photo-1568322445389-f64ac2515020?auto=format&fit=crop&w=1000&q=80',
+      image: A + 'sight-karnak.jpg',
       enabled: true,
       canAddToJourney: true
     },
@@ -81,7 +81,7 @@ window.NileTrailsCMS = (() => {
       guideIncluded: 'Private Egyptologist Guide + Private Vehicle + All Entry Tickets',
       price: 120,
       priceUnit: 'per person',
-      image: 'https://images.unsplash.com/photo-1539650116574-8efeb43e2750?auto=format&fit=crop&w=1000&q=80',
+      image: A + 'sight-queens.jpg',
       enabled: true,
       canAddToJourney: true
     },
@@ -104,7 +104,7 @@ window.NileTrailsCMS = (() => {
       guideIncluded: 'Private Egyptologist Guide + Valley Ticket (3 Tombs) + Transfers',
       price: 75,
       priceUnit: 'per person',
-      image: 'https://images.unsplash.com/photo-1572252821143-035a024857ac?auto=format&fit=crop&w=1000&q=80',
+      image: IMG.temple,
       enabled: true,
       canAddToJourney: true
     },
@@ -126,7 +126,7 @@ window.NileTrailsCMS = (() => {
       guideIncluded: 'Private Egyptologist Guide + Entry Ticket + Private A/C Transfer',
       price: 50,
       priceUnit: 'per person',
-      image: 'https://images.unsplash.com/photo-1553913861-c0fddf2619ee?auto=format&fit=crop&w=1000&q=80',
+      image: A + 'sight-hatshepsut.jpg',
       enabled: true,
       canAddToJourney: true
     },
@@ -148,7 +148,7 @@ window.NileTrailsCMS = (() => {
       guideIncluded: 'Private Egyptologist Guide + Entry Tickets + Transfers',
       price: 55,
       priceUnit: 'per person',
-      image: 'https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=1000&q=80',
+      image: A + 'sight-karnak.jpg',
       enabled: true,
       canAddToJourney: true
     },
@@ -170,7 +170,7 @@ window.NileTrailsCMS = (() => {
       guideIncluded: 'Private Egyptologist Guide + Entry Ticket + Private Transfer',
       price: 45,
       priceUnit: 'per person',
-      image: 'https://images.unsplash.com/photo-1544945582-3b466d874eac?auto=format&fit=crop&w=1000&q=80',
+      image: IMG.temple,
       enabled: true,
       canAddToJourney: true
     },
@@ -191,7 +191,7 @@ window.NileTrailsCMS = (() => {
       guideIncluded: 'Private Egyptologist Guide + Private Vehicle Stop',
       price: 30,
       priceUnit: 'per person',
-      image: 'https://images.unsplash.com/photo-1568322445389-f64ac2515020?auto=format&fit=crop&w=1000&q=80',
+      image: A + 'sight-hatshepsut.jpg',
       enabled: true,
       canAddToJourney: true
     },
@@ -213,7 +213,7 @@ window.NileTrailsCMS = (() => {
       guideIncluded: 'Private Egyptologist Guide + Esna Temple Entry Ticket',
       price: 45,
       priceUnit: 'per person',
-      image: 'https://images.unsplash.com/photo-1539650116574-8efeb43e2750?auto=format&fit=crop&w=1000&q=80',
+      image: A + 'sight-queens.jpg',
       enabled: true,
       canAddToJourney: true
     },
@@ -235,7 +235,7 @@ window.NileTrailsCMS = (() => {
       guideIncluded: 'Private Egyptologist Guide + Entry Ticket + Local Transfer',
       price: 55,
       priceUnit: 'per person',
-      image: 'https://images.unsplash.com/photo-1572252821143-035a024857ac?auto=format&fit=crop&w=1000&q=80',
+      image: IMG.sailing,
       enabled: true,
       canAddToJourney: true
     },
@@ -257,7 +257,7 @@ window.NileTrailsCMS = (() => {
       guideIncluded: 'Private Egyptologist Guide + Temple & Crocodile Museum Ticket',
       price: 50,
       priceUnit: 'per person',
-      image: 'https://images.unsplash.com/photo-1553913861-c0fddf2619ee?auto=format&fit=crop&w=1000&q=80',
+      image: A + 'sight-karnak.jpg',
       enabled: true,
       canAddToJourney: true
     },
@@ -279,7 +279,7 @@ window.NileTrailsCMS = (() => {
       guideIncluded: 'Private Egyptologist Guide + Private Motorboat + Entry Ticket',
       price: 60,
       priceUnit: 'per person',
-      image: 'https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=1000&q=80',
+      image: IMG.cruise,
       enabled: true,
       canAddToJourney: true
     },
@@ -300,7 +300,7 @@ window.NileTrailsCMS = (() => {
       guideIncluded: 'Private Egyptologist Guide + Quarry Ticket + Private Transfer',
       price: 40,
       priceUnit: 'per person',
-      image: 'https://images.unsplash.com/photo-1544945582-3b466d874eac?auto=format&fit=crop&w=1000&q=80',
+      image: IMG.cruise,
       enabled: true,
       canAddToJourney: true
     },
@@ -321,7 +321,7 @@ window.NileTrailsCMS = (() => {
       guideIncluded: 'Private Egyptologist Guide + Entry Ticket + Private Transfer',
       price: 35,
       priceUnit: 'per person',
-      image: 'https://images.unsplash.com/photo-1568322445389-f64ac2515020?auto=format&fit=crop&w=1000&q=80',
+      image: IMG.cruise,
       enabled: true,
       canAddToJourney: true
     },
@@ -343,7 +343,7 @@ window.NileTrailsCMS = (() => {
       guideIncluded: 'Private Egyptologist + Private A/C Vehicle + Abu Simbel Tickets',
       price: 165,
       priceUnit: 'per person',
-      image: 'https://images.unsplash.com/photo-1539650116574-8efeb43e2750?auto=format&fit=crop&w=1000&q=80',
+      image: IMG.temple,
       enabled: true,
       canAddToJourney: true
     },
@@ -366,7 +366,7 @@ window.NileTrailsCMS = (() => {
       guideIncluded: 'Private Guide + Private River Boat + Nubian Family Hospitality',
       price: 55,
       priceUnit: 'per person',
-      image: 'https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=1000&q=80',
+      image: IMG.sailing,
       enabled: true,
       canAddToJourney: true
     }
@@ -907,6 +907,7 @@ window.NileTrailsCMS = (() => {
     version: 3,
     settings: {
       brandName: 'NileTrails',
+      brandLogo: A + 'niletrails-logo.png',
       tagline: 'SAILING THE NILE · DISCOVERING EGYPT',
       currency: 'USD',
       currencySymbol: '$',
@@ -914,7 +915,34 @@ window.NileTrailsCMS = (() => {
       contactPhone: '+20 100 555 8899',
       whatsapp: '+201005558899',
       youtubeHeroUrl: VIDEOS.youtubeUrl,
-      showAdminBar: true
+      showAdminBar: true,
+      headerSecondaryText: 'Nubian & Nile',
+      headerSecondaryUrl: 'beyond-the-nile/nubian-and-the-nile',
+      headerPrimaryText: 'Plan your journey',
+      headerPrimaryUrl: 'plan-your-journey',
+      navLabels: {
+        'nile-cruises': 'Nile Cruises',
+        dahabiyas: 'Dahabiyas',
+        journeys: 'Journeys',
+        'beyond-the-nile': 'Beyond the Nile',
+        'nile-stories': 'Nile Stories',
+        about: 'About'
+      },
+      hiddenNavKeys: [],
+      customNavItems: [],
+      footerCtaEyebrow: 'THE NEXT CHAPTER IS YOURS',
+      footerCtaTitle: 'Let the river lead <em>the way.</em>',
+      footerCtaBtnText: 'Design your journey',
+      footerCtaBtnUrl: 'plan-your-journey',
+      footerAbout: 'Thoughtful Nile cruises, curated sailing programs, traditional dahabiya vessels and guided sightseeing through Egypt.',
+      footerConvText: 'No journey is exactly the same. Select a cruise program, add guided sightseeing & extensions, or tell us what you have in mind.',
+      socialInstagram: '',
+      socialFacebook: '',
+      theme: {
+        navy: '#0d2a3a',
+        gold: '#c7a36a',
+        cream: '#fcfaf6'
+      }
     },
     homeConfig: {
       heroEyebrow: 'TRAVEL DEEPER. SAIL SLOWER.',
@@ -926,6 +954,64 @@ window.NileTrailsCMS = (() => {
       primaryBtnUrl: 'nile-cruises',
       secondaryBtnText: 'Nubian & the Nile Sightseeing',
       secondaryBtnUrl: 'beyond-the-nile/nubian-and-the-nile',
+      searchCaption: 'DISCOVER YOUR WAY',
+      searchQuestion: 'Where shall we take you?',
+      searchBtnText: 'Discover',
+      introEyebrow: 'THE NILETRAILS PHILOSOPHY',
+      introTitle: 'More than seeing Egypt.<br><em>Feeling its rhythm.</em>',
+      introBody: 'Every Nile cruise and dahabiya features curated 3, 4 & 7-night programs, full onboard facilities, private Egyptologist sightseeing tours, and seamless add-on extensions across Egypt.',
+      introLinkText: 'Explore Nubian & the Nile Sightseeing',
+      introLinkUrl: 'beyond-the-nile/nubian-and-the-nile',
+      expEyebrow: 'DISCOVER YOUR WAY',
+      expTitle: 'One river. <em>Many ways to wonder.</em>',
+      expSub: 'Choose how you want to experience Egypt — then select your sailing program, guided sightseeing and custom add-ons.',
+      experiences: [
+        { id: 'exp-1', title: 'Nile Cruises', desc: 'Curated 3, 4 & 7-night programs with onboard facilities & private Egyptologist.', url: 'nile-cruises', image: IMG.cruise },
+        { id: 'exp-2', title: 'Dahabiyas', desc: 'Tradition, intimacy and the unhurried art of wind-powered sailing.', url: 'dahabiyas', image: IMG.sailing },
+        { id: 'exp-3', title: 'Nubian & the Nile', desc: '15 iconic temples, tombs & Nubian villages with private tour guide.', url: 'beyond-the-nile/nubian-and-the-nile', image: IMG.temple },
+        { id: 'exp-4', title: 'Beyond the Nile', desc: 'Cairo, Red Sea, White Desert, Oases and extraordinary stories.', url: 'beyond-the-nile', image: IMG.temple }
+      ],
+      cruisesEyebrow: 'THE NILE COLLECTION & PROGRAMS',
+      cruisesTitle: 'The journey begins <em>on the water.</em>',
+      cruisesSub: 'Select any vessel below to view its 3, 4 & 7-night programs, route map, cruise facilities, guided sightseeing add-ons and booking form.',
+      sightEyebrow: 'BEYOND THE NILE · NUBIAN AND THE NILE',
+      sightTitle: 'Main Places to Visit <em>During a Nile Cruise.</em>',
+      sightSub: 'Explore the iconic temples, royal tombs and Nubian heritage sites between Luxor and Aswan — each can be added to your journey with a private Egyptologist tour guide.',
+      sightBtnText: 'Explore All 15 Sightseeing Places & Prices',
+      signatureEyebrow: 'A DIFFERENT WAY TO TRAVEL',
+      signatureTitle: 'Let the days<br><em>unfold naturally.</em>',
+      signatureBody: 'There is something transformative about travelling at the pace of the river. Wake to quiet mornings, linger over the landscape and customize your voyage with guided sightseeing and seamless extensions.',
+      signatureImage: IMG.sailing,
+      signaturePoints: [
+        '01 / 3, 4 & 7-Night programs with interactive route maps',
+        '02 / 15 guided sightseeing places you can add to your journey',
+        '03 / Full onboard cruise facilities & private Egyptologist guides'
+      ],
+      signatureBtnText: 'Discover Dahabiya Sailing',
+      signatureBtnUrl: 'dahabiyas',
+      addonsEyebrow: 'ENHANCE YOUR VOYAGE',
+      addonsTitle: 'Popular Add-ons & <em>Program Extensions.</em>',
+      addonsSub: 'When booking any cruise program, you can effortlessly attach these multi-day extensions and signature experiences.',
+      journeysEyebrow: 'GO BEYOND THE ORDINARY',
+      journeysTitle: 'Egypt is a story.<br><em>Make it yours.</em>',
+      journeysBody: 'Our Journeys are not rigid packages. They are thoughtful starting points for the experiences, landscapes and connections you want to make.',
+      journeysBtnText: 'Explore Journeys',
+      journeysBtnUrl: 'journeys',
+      journeysCard1Title: 'Classic Nile Journey',
+      journeysCard1Sub: '01 / THE ESSENTIALS',
+      journeysCard1Image: IMG.temple,
+      journeysCard2Title: 'Nubian & the Nile Sightseeing',
+      journeysCard2Sub: '02 / BEYOND THE NILE',
+      journeysCard2Image: IMG.sailing,
+      storiesEyebrow: 'FROM THE JOURNAL',
+      storiesTitle: 'Stories worth <em>taking with you.</em>',
+      storiesSub: 'Guides, ideas and inspiration for seeing Egypt with fresh eyes.',
+      closingEyebrow: 'MADE FOR YOUR MOMENTS',
+      closingTitle: 'Where will your<br><em>story take you?</em>',
+      closingBody: 'Tell us the places you dream about. We will help design the journey that feels right for you.',
+      closingBtnText: 'Plan Your Journey',
+      closingBtnUrl: 'plan-your-journey',
+      closingImage: IMG.temple,
       sections: [
         { id: 'search', label: 'Quick Search Bar (شريط البحث السريع)', enabled: true },
         { id: 'intro', label: 'Philosophy Intro (مقدمة فلسفة الموقع)', enabled: true },
@@ -1184,6 +1270,96 @@ window.NileTrailsCMS = (() => {
         notes: 'Travelling with our 11-year-old son who is fascinated by ancient Egyptian hieroglyphs.'
       }
     ],
+    staticPages: {
+      'our-story': {
+        title: 'Our Story',
+        eyebrow: 'ABOUT NILETRAILS',
+        subtitle: 'A different perspective on Egypt, with the river at its heart.',
+        heroImage: IMG.sailing,
+        sectionEyebrow: 'WHY WE EXIST',
+        heading: 'Egypt is more than a place to visit.<br><em>It is a journey to feel.</em>',
+        body1: 'NileTrails is built around a simple idea: the most memorable travel happens when people, place and pace come together.',
+        body2: 'Our focus begins with the Nile — its remarkable landscapes, timeless cultures and the many ways to experience them — then extends across Egypt through thoughtfully designed journeys.',
+        sideImage: IMG.temple,
+        ctaText: 'Why Travel With Us',
+        ctaUrl: 'about/why-niletrails'
+      },
+      'why-niletrails': {
+        title: 'Why NileTrails',
+        eyebrow: 'ABOUT NILETRAILS',
+        subtitle: 'Thoughtful choices, memorable experiences, genuine discovery.',
+        heroImage: IMG.sailing,
+        sectionEyebrow: 'WHAT WE BELIEVE',
+        heading: 'Thoughtful travel,<br><em>beautifully considered.</em>',
+        body1: 'From choosing the right style of Nile sailing to connecting your favourite destinations, we focus on experiences that feel personal, unhurried and full of meaning.',
+        body2: '',
+        sideImage: IMG.sailing,
+        ctaText: 'Explore Cruises',
+        ctaUrl: 'nile-cruises'
+      },
+      'our-team': {
+        title: 'Our Team',
+        eyebrow: 'ABOUT NILETRAILS',
+        subtitle: 'Real people who care about how you experience Egypt.',
+        heroImage: IMG.temple,
+        sectionEyebrow: 'THE PEOPLE BEHIND THE JOURNEYS',
+        heading: 'Travel is <em>personal.</em>',
+        body1: 'We believe thoughtful journeys begin with people who listen. Our licensed Egyptologists and travel designers craft every itinerary personally around you.',
+        body2: '',
+        sideImage: IMG.temple,
+        ctaText: 'Meet your travel designer',
+        ctaUrl: 'contact'
+      },
+      'why-dahabiya': {
+        title: 'Why Sail by Dahabiya?',
+        eyebrow: 'THE DAHABIYA EXPERIENCE',
+        subtitle: 'Experience the Nile the traditional way — slowly, intimately and with care.',
+        heroImage: IMG.sailing,
+        heroVideo: V + 'hero-dahabiya-1.mp4',
+        sectionEyebrow: 'THE ART OF SLOW TRAVEL',
+        heading: 'Less rushing.<br><em>More remembering.</em>',
+        body1: 'For travellers who enjoy quieter moments, smaller vessels and a stronger connection to the river, the dahabiya offers an inspiring alternative to a conventional Nile cruise.',
+        body2: 'Explore luxury, deluxe and private sailing styles — then personalise the experience around you.',
+        sideImage: IMG.sailing,
+        ctaText: 'Explore the Collection',
+        ctaUrl: 'dahabiyas'
+      },
+      'travel-information': {
+        title: 'Travel Information',
+        eyebrow: 'BEFORE YOU GO',
+        subtitle: 'Thoughtful planning for a more enjoyable journey.',
+        heroImage: IMG.temple,
+        sectionEyebrow: 'PREPARE FOR EGYPT',
+        heading: 'A little preparation.<br><em>A lot more discovery.</em>',
+        body1: 'These are general planning topics rather than legal or visa advice. Always verify current entry requirements, health guidance and travel conditions with official sources before departure.'
+      },
+      'contact': {
+        title: 'Start a Conversation',
+        eyebrow: 'CONTACT US',
+        subtitle: 'Tell us what you imagine. We’ll help shape the journey.',
+        heroImage: IMG.sailing,
+        sectionEyebrow: 'WE WOULD LOVE TO HEAR FROM YOU',
+        heading: 'Every great journey<br><em>starts here.</em>',
+        body1: 'Whether you know exactly how you want to travel or are still exploring the possibilities, share a few details and let us start planning together.',
+        body2: 'We review your preferences, discuss the possibilities and help you refine the right direction for your trip.'
+      },
+      'privacy-policy': {
+        title: 'Privacy Policy',
+        eyebrow: 'PRIVACY',
+        subtitle: 'Information about the website and its services.',
+        heroImage: IMG.temple,
+        heading: 'Privacy Policy',
+        body1: 'NileTrails respects your privacy and collects enquiry data solely to respond to your travel requests, arrange bookings, and customize your itinerary.'
+      },
+      'terms-and-conditions': {
+        title: 'Terms & Conditions',
+        eyebrow: 'TERMS',
+        subtitle: 'Information about booking arrangements and website use.',
+        heroImage: IMG.temple,
+        heading: 'Booking & Service Terms',
+        body1: 'All Nile cruise, dahabiya, and sightseeing quotations remain subject to seasonal cabin availability until confirmed by our concierge team.'
+      }
+    },
     faqs: JSON.parse(JSON.stringify(DEFAULT_FAQS))
   };
 
@@ -1196,6 +1372,27 @@ window.NileTrailsCMS = (() => {
     if (!Array.isArray(targetState.faqs) || !targetState.faqs.length) {
       targetState.faqs = JSON.parse(JSON.stringify(DEFAULT_FAQS));
     }
+    const baseSettings = JSON.parse(JSON.stringify(DEFAULT_DATA.settings));
+    targetState.settings = {
+      ...baseSettings,
+      ...(targetState.settings || {}),
+      navLabels: { ...baseSettings.navLabels, ...(targetState.settings?.navLabels || {}) },
+      theme: { ...baseSettings.theme, ...(targetState.settings?.theme || {}) }
+    };
+    const baseHome = JSON.parse(JSON.stringify(DEFAULT_DATA.homeConfig));
+    const curHome = targetState.homeConfig || {};
+    const existingSecs = Array.isArray(curHome.sections) && curHome.sections.length
+      ? curHome.sections
+      : (Array.isArray(curHome.sectionsOrder) && curHome.sectionsOrder.length ? curHome.sectionsOrder : baseHome.sections);
+    targetState.homeConfig = { ...baseHome, ...curHome, sections: existingSecs };
+    if (!Array.isArray(targetState.homeConfig.experiences) || !targetState.homeConfig.experiences.length) {
+      targetState.homeConfig.experiences = baseHome.experiences;
+    }
+    if (!Array.isArray(targetState.homeConfig.signaturePoints) || !targetState.homeConfig.signaturePoints.length) {
+      targetState.homeConfig.signaturePoints = baseHome.signaturePoints;
+    }
+    const baseStatic = JSON.parse(JSON.stringify(DEFAULT_DATA.staticPages));
+    targetState.staticPages = { ...baseStatic, ...(targetState.staticPages || {}) };
     [...(targetState.cruises || []), ...(targetState.dahabiyas || [])].forEach(v => {
       if (typeof v.basePrice !== 'number' || v.basePrice <= 0) {
         const prices = (v.programs || []).map(p => Number(p.basePrice) || 0).filter(n => n > 0);
