@@ -347,7 +347,8 @@
     const name = isPage ? item.title : isJ || kind === 'destination' ? item.name : item.title;
     const meta = isPage ? (item.eyebrow || 'Special Collection') : isJ ? item.route : kind === 'destination' ? item.subtitle : kind === 'story' ? item.category : `${item.nights} nights · ${item.route}`;
     const progsCount = Array.isArray(item.programs) ? item.programs.length : 0;
-    const minPrice = progsCount > 0 ? Math.min(...item.programs.map(pr => Number(pr.basePrice) || 9999)) : null;
+    const progMin = progsCount > 0 ? Math.min(...item.programs.map(pr => Number(pr.basePrice) || 9999)) : null;
+    const minPrice = (Number(item.basePrice) > 0) ? Number(item.basePrice) : progMin;
 
     return `<article class="collection-card">
       <a class="card-photo" href="${p(slug)}">
@@ -1197,7 +1198,7 @@
                 <span class="nct-bc-season-pill" id="bc-season-pill">May – Aug</span>
               </div>
               <div class="nct-bc-price" id="bc-top-price">${cur}${(basePrice * 2).toLocaleString()} <span>total · ${cur}${basePrice}/pp</span></div>
-              <div class="nct-bc-breakdown-mini" id="bc-top-breakdown">Cruise ${cur}${(basePrice * 2).toLocaleString()} · 0 Extras Added</div>
+              <div class="nct-bc-breakdown-mini" id="bc-top-breakdown" data-vessel-label="${isCruise ? 'Cruise' : 'Dahabiya'}">${isCruise ? 'Cruise' : 'Dahabiya'} ${cur}${(basePrice * 2).toLocaleString()} · 0 Extras Added</div>
               <div class="nct-bc-rate"><span class="stars">★★★★★</span> Rated 5.0 · Private Egyptologist Included</div>
             </div>
 
@@ -1221,7 +1222,7 @@
                 <div><dt>Season</dt><dd id="sum-season-name">May – Aug (Summer)</dd></div>
                 <div><dt>Cabin</dt><dd id="sum-cabin-name">Double Cabin</dd></div>
                 <div><dt>Travellers</dt><dd id="sum-guests">2 Adults</dd></div>
-                <div><dt>Base Rate</dt><dd id="sum-base-calc">${cur}${basePrice} × 2 = ${cur}${(basePrice * 2).toLocaleString()}</dd></div>
+                <div><dt>${isCruise ? 'Cruise' : 'Dahabiya'} Only</dt><dd id="sum-base-calc">${cur}${basePrice} × 2 = ${cur}${(basePrice * 2).toLocaleString()}</dd></div>
               </dl>
 
               <div class="sum-addons-box">
@@ -1974,9 +1975,10 @@
         $('#bc-top-price').innerHTML = `${cur}${grandTotal.toLocaleString()} <span>total · ${cur}${perPersonAvg.toLocaleString()}/pp</span>`;
       }
       if ($('#bc-top-breakdown')) {
+        const vesselLbl = $('#bc-top-breakdown').dataset.vesselLabel || 'Cruise';
         $('#bc-top-breakdown').textContent = allSelectedItems.length
-          ? `Cruise ${cur}${baseTotal.toLocaleString()} + ${allSelectedItems.length} Extras (${cur}${addonsTotal.toLocaleString()}) · ${guestsLabel}`
-          : `Cruise ${cur}${baseTotal.toLocaleString()} · ${guestsLabel} · 0 Extras`;
+          ? `${vesselLbl} ${cur}${baseTotal.toLocaleString()} + ${allSelectedItems.length} Extras (${cur}${addonsTotal.toLocaleString()}) · ${guestsLabel}`
+          : `${vesselLbl} ${cur}${baseTotal.toLocaleString()} · ${guestsLabel} · 0 Extras`;
       }
 
       if ($('#sum-season-name')) $('#sum-season-name').textContent = seasonFull;

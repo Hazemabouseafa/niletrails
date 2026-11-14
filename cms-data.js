@@ -770,10 +770,14 @@ window.NileTrailsCMS = (() => {
       enabled: true,
       showOnHome: false
     }
-  ].map((c, idx) => ({
-    ...c,
-    programs: buildDefaultProgramsForVessel(c.slug, c.title, c.tier, c.nights, c.route, c.kind, [VIDEOS.cruise1, VIDEOS.cruise2, VIDEOS.cruise3][idx % 3])
-  }));
+  ].map((c, idx) => {
+    const programs = buildDefaultProgramsForVessel(c.slug, c.title, c.tier, c.nights, c.route, c.kind, [VIDEOS.cruise1, VIDEOS.cruise2, VIDEOS.cruise3][idx % 3]);
+    return {
+      ...c,
+      basePrice: Number(programs[0]?.basePrice) || 750,
+      programs
+    };
+  });
 
   const seedDahabiyas = [
     {
@@ -824,10 +828,14 @@ window.NileTrailsCMS = (() => {
       enabled: true,
       showOnHome: true
     }
-  ].map((d, idx) => ({
-    ...d,
-    programs: buildDefaultProgramsForVessel(d.slug, d.title, d.tier, d.nights, d.route, d.kind, idx % 2 === 0 ? VIDEOS.dahabiya1 : VIDEOS.dahabiya2)
-  }));
+  ].map((d, idx) => {
+    const programs = buildDefaultProgramsForVessel(d.slug, d.title, d.tier, d.nights, d.route, d.kind, idx % 2 === 0 ? VIDEOS.dahabiya1 : VIDEOS.dahabiya2);
+    return {
+      ...d,
+      basePrice: Number(programs[0]?.basePrice) || 850,
+      programs
+    };
+  });
 
   const DEFAULT_FAQS = [
     {
@@ -1188,6 +1196,12 @@ window.NileTrailsCMS = (() => {
     if (!Array.isArray(targetState.faqs) || !targetState.faqs.length) {
       targetState.faqs = JSON.parse(JSON.stringify(DEFAULT_FAQS));
     }
+    [...(targetState.cruises || []), ...(targetState.dahabiyas || [])].forEach(v => {
+      if (typeof v.basePrice !== 'number' || v.basePrice <= 0) {
+        const prices = (v.programs || []).map(p => Number(p.basePrice) || 0).filter(n => n > 0);
+        v.basePrice = prices.length ? Math.min(...prices) : (v.kind === 'dahabiya' ? 850 : 750);
+      }
+    });
   }
 
   function loadLocal() {

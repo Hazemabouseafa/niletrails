@@ -380,6 +380,7 @@ window.NileTrailsAdmin = (() => {
                 <span>${item.kind === 'dahabiya' ? 'ذهبية' : 'كروز'} · ${esc(item.tier)} · ${(item.programs || []).length} برامج</span>
                 <div class="adm-item-badges">
                   <em class="pill ${item.enabled !== false ? 'on' : 'off'}">${item.enabled !== false ? 'مفعّل' : 'مخفي'}</em>
+                  <em class="pill price">من ${cur}${Number(item.basePrice) || Number(item.programs?.[0]?.basePrice) || 890} بدون إضافات</em>
                   ${item.showOnHome ? '<em class="pill home">بالرئيسية</em>' : ''}
                 </div>
               </div>
@@ -419,6 +420,19 @@ window.NileTrailsAdmin = (() => {
                 <label>عدد الليالي المعروض
                   <input type="number" name="nights" value="${v.nights || 4}" min="1">
                 </label>
+                <div class="full-col adm-standalone-price-box">
+                  <div class="adm-spb-head">
+                    <label style="flex:1;min-width:220px">
+                      سعر ${v.kind === 'dahabiya' ? 'الذهبية' : 'الكروز'} لوحدها بدون أي إضافات (Add-ons) (${cur}) *
+                      <input type="number" name="basePrice" value="${Number(v.basePrice) || Number(v.programs?.[0]?.basePrice) || 890}" min="0" step="1" required>
+                    </label>
+                    <label class="adm-switch" style="align-self:flex-end;padding-bottom:6px">
+                      <input type="checkbox" name="syncPrimaryProgram" checked>
+                      <span>تحديث سعر البرنامج الأساسي الأول (${esc(v.programs?.[0]?.tabLabel || 'Program 1')}) تلقائياً</span>
+                    </label>
+                  </div>
+                  <small>هذا هو السعر الصافي للكروز / الذهبية فقط بدون أي Add-ons، ويظهر في الكروت وبداية الحجز.</small>
+                </div>
                 <div class="full-col">
                   ${mediaFieldHtml('image', 'صورة المركب / الذهبية', v.image, false)}
                 </div>
@@ -460,10 +474,14 @@ window.NileTrailsAdmin = (() => {
                         ${pr.tabLabel ? `<span class="pill home">${esc(pr.tabLabel)}</span>` : ''}
                         ${pr.canBeAddonForOthers ? '<span class="pill on">يظهر كإضافة للبرامج</span>' : ''}
                       </div>
-                      <p>${esc(pr.duration)} · ${esc(pr.route)} · يبدأ من <strong>${cur}${pr.basePrice}</strong> / فرد</p>
+                      <p>${esc(pr.duration)} · ${esc(pr.route)}</p>
                       <small>${(pr.itinerary || []).length} أيام · ${(pr.cabins || []).length} أنواع كبائن</small>
                     </div>
                     <div class="adm-prog-actions">
+                      <label class="adm-inline-price">
+                        <span>سعر البرنامج بدون إضافات (${cur})</span>
+                        <input type="number" min="0" step="1" value="${Number(pr.basePrice) || Number(v.basePrice) || 890}" data-quick-prog-price="${esc(v.id)}::${esc(pr.id)}">
+                      </label>
                       <button type="button" class="adm-btn-gold-sm" data-open-prog-drawer="${esc(v.id)}::${esc(pr.id)}">تعديل البرنامج</button>
                       <button type="button" class="adm-btn-danger-sm" data-delete-prog="${esc(v.id)}::${esc(pr.id)}">حذف</button>
                     </div>
@@ -1654,11 +1672,20 @@ window.NileTrailsAdmin = (() => {
       const fd = new FormData(e.target);
       const target = [...(st.cruises || []), ...(st.dahabiyas || [])].find(x => x.id === vid);
       if (target) {
+        const parsedBase = Number(fd.get('basePrice'));
+        const cleanBase = Number.isFinite(parsedBase) && parsedBase >= 0 ? parsedBase : (Number(target.basePrice) || 890);
         target.title = fd.get('title');
         target.slug = slugify(fd.get('title'));
         target.tier = fd.get('tier');
         target.route = fd.get('route');
         target.nights = Number(fd.get('nights')) || 4;
+        target.basePrice = cleanBase;
+        if (fd.get('syncPrimaryProgram') === 'on' && target.programs?.[0]) {
+          target.programs[0].basePrice = cleanBase;
+          if (!target.programs[0].pricingSeasons) target.programs[0].pricingSeasons = {};
+          if (!target.programs[0].pricingSeasons.summer) target.programs[0].pricingSeasons.summer = {};
+          target.programs[0].pricingSeasons.summer.double = cleanBase;
+        }
         target.image = fd.get('image');
         target.heroVideo = fd.get('heroVideo');
         target.sub = fd.get('sub');
@@ -1676,6 +1703,7 @@ window.NileTrailsAdmin = (() => {
         title: isDahabiya ? 'New Boutique Dahabiya' : 'New 5-Star Nile Cruise',
         tier: 'Luxury',
         nights: 4,
+        basePrice: 890,
         route: 'Luxor – Aswan',
         image: isDahabiya ? 'assets/nile-sailing.webp' : 'assets/nile-cruise.webp',
         heroVideo: isDahabiya ? 'assets/videos/hero-dahabiya-1.mp4' : 'assets/videos/hero-cruise-1.mp4',
@@ -1775,6 +1803,27 @@ window.NileTrailsAdmin = (() => {
       target.programs.push(newProg);
       await saveAndRefresh(containerSelector, 'تم إضافة البرنامج — اضغط تعديل لفتح المحرر');
       openProgramDrawer(st, vid, pid, containerSelector);
+    });
+
+    $$('[data-quick-prog-price]').forEach(inp => {
+      inp.addEventListener('change', async () => {
+        const [vid, pid] = inp.dataset.quickProgPrice.split('::');
+        const target = [...(st.cruises || []), ...(st.dahabiyas || [])].find(x => x.id === vid);
+        const prog = target?.programs?.find(p => p.id === pid);
+        const nextPrice = Number(inp.value);
+        if (!target || !prog || !Number.isFinite(nextPrice) || nextPrice < 0) {
+          showToast('أدخل سعراً صحيحاً بدون إضافات', 'error');
+          return;
+        }
+        prog.basePrice = nextPrice;
+        if (prog.pricingSeasons?.summer) {
+          prog.pricingSeasons.summer.double = nextPrice;
+        }
+        if (target.programs?.[0]?.id === prog.id) {
+          target.basePrice = nextPrice;
+        }
+        await saveAndRefresh(containerSelector, `تم تحديث سعر "${prog.tabLabel || prog.title}" إلى ${st.settings?.currencySymbol || '$'}${nextPrice}`);
+      });
     });
 
     $$('[data-open-prog-drawer]').forEach(btn => {

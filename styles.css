@@ -148,7 +148,7 @@
 .planner-addons-mini{display:grid;gap:8px;background:#f8f5ef;padding:16px;border:1px solid #e3ded4;margin-bottom:20px;max-height:240px;overflow:auto}
 
 /* FLOATING ADMIN QUICK BAR */
-.floating-admin-bar{position:fixed;bottom:22px;right:22px;z-index:90}
+.floating-admin-bar{position:fixed;bottom:22px;left:22px;right:auto;z-index:90}
 .fab-admin-btn{display:flex;align-items:center;gap:12px;background:#092434;color:#fff;padding:12px 18px;border-radius:99px;border:1px solid var(--gold);box-shadow:0 14px 35px rgba(0,0,0,.28);font-family:'Cairo',var(--ui);font-size:13px;font-weight:700;transition:.2s}
 .fab-admin-btn:hover{background:#133b52;transform:translateY(-2px)}
 .fab-dot{width:9px;height:9px;border-radius:50%;background:#35c47c;box-shadow:0 0 0 4px rgba(53,196,124,.25)}
@@ -380,12 +380,21 @@
 /* Sticky Section Jump Bar */
 .nct-subnav {
   position: sticky;
-  top: 78px;
+  top: 104px;
   z-index: 35;
   background: rgba(255, 255, 255, .96);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
   box-shadow: 0 6px 20px rgba(9, 32, 46, .05);
+}
+@media (max-width: 1300px) {
+  .nct-subnav { top: 92px; }
+}
+@media (max-width: 1024px) {
+  .nct-subnav { top: 86px; }
+}
+@media (max-width: 700px) {
+  .nct-subnav { top: 74px; }
 }
 .nct-subnav-inner {
   display: flex;
@@ -1140,7 +1149,10 @@
 /* Sticky Right Booking Card (nct-aside-sticky) */
 .nct-aside-sticky {
   position: sticky;
-  top: 140px;
+  top: 162px;
+  max-height: calc(100dvh - 166px);
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 .nct-bookcard {
   background: #fff;
@@ -1152,68 +1164,74 @@
 .nct-bc-top {
   background: #0b2636;
   color: #fff;
-  padding: 22px 24px;
+  padding: 10px 18px;
 }
 .nct-bc-from {
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: .1em;
   color: #dfbc87;
+  font-weight: 800;
 }
 .nct-bc-price {
   font-family: var(--serif);
-  font-size: 40px;
+  font-size: 28px;
   font-weight: 600;
   line-height: 1.05;
-  margin: 4px 0 8px;
+  margin: 2px 0;
 }
 .nct-bc-price span {
   font-family: var(--ui);
-  font-size: 14px;
+  font-size: 12.5px;
   font-weight: 400;
-  color: rgba(255,255,255,.76);
+  color: rgba(255,255,255,.8);
 }
 .nct-bc-rate {
-  font-size: 12px;
-  color: rgba(255,255,255,.85);
+  font-size: 11px;
+  color: rgba(255,255,255,.82);
+  margin-top: 2px;
 }
 .nct-bc-rate .stars {
   color: #f4b942;
 }
 .nct-bc-body {
-  padding: 22px 24px;
+  padding: 10px 16px;
 }
 .nct-bc-prog-box {
   background: #faf6ee;
   border: 1px solid #e4d8c3;
   border-radius: 6px;
-  padding: 12px 14px;
-  margin-bottom: 12px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
 }
 .nct-bc-prog-box small {
   display: block;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
   color: #8f6836;
+  letter-spacing: .08em;
 }
 .nct-bc-prog-box strong {
   display: block;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1.25;
   color: #0b2636;
   margin: 2px 0;
 }
 .nct-bc-prog-box span {
-  font-size: 12px;
+  display: block;
+  font-size: 11px;
   color: #617783;
 }
 .nct-bc-prog-pills {
   display: flex;
-  gap: 6px;
-  margin-bottom: 14px;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
 }
 .nct-bc-prog-pills button {
-  flex: 1;
-  padding: 7px 8px;
+  flex: 1 1 auto;
+  padding: 5px 8px;
   font-size: 11px;
   font-weight: 700;
   border: 1px solid #d8ccb8;
@@ -1221,25 +1239,81 @@
   color: #2e4857;
   border-radius: 4px;
   cursor: pointer;
+  white-space: nowrap;
 }
 .nct-bc-prog-pills button.active {
   background: #0b2636;
   border-color: #0b2636;
   color: #eed3a8;
 }
+.live-summary-dl {
+  margin: 0 0 6px;
+  display: grid;
+  gap: 0;
+}
+.live-summary-dl > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px dashed #ebe3d5;
+  font-size: 12px;
+}
+.live-summary-dl dt {
+  color: #5d7480;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.live-summary-dl dd {
+  margin: 0;
+  color: #0b2636;
+  font-weight: 700;
+  text-align: right;
+  min-width: 0;
+}
+.nct-bookcard .sum-addons-box {
+  padding: 8px 10px;
+  margin: 8px 0;
+  border-radius: 6px;
+  background: #fdfbf7;
+}
+.nct-bookcard #sum-addons-list {
+  max-height: 95px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.nct-bookcard .sum-total-band {
+  padding: 9px 12px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+}
+.nct-bookcard .sum-total-band strong {
+  font-size: 22px;
+}
 .nct-bc-btn, .nct-bc-btn-sec {
   width: 100%;
+  min-height: 38px;
+  padding: 8px 14px;
   justify-content: center;
-  margin-top: 10px;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12.5px;
 }
 .nct-bc-trust {
-  margin-top: 16px;
-  padding-top: 14px;
+  margin-top: 8px;
+  padding-top: 8px;
   border-top: 1px solid #ece4d6;
   display: grid;
-  gap: 6px;
-  font-size: 12px;
+  gap: 2px;
+  font-size: 11px;
   color: #4f6672;
+}
+@media (max-width: 1024px) {
+  .nct-aside-sticky {
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 /* Phone Dial Code Combo */
@@ -1901,6 +1975,7 @@
 .pill.on { background: #e1f5ea; color: #196b42; }
 .pill.off { background: #fdecec; color: #b42318; }
 .pill.home { background: #f3ead7; color: #755320; }
+.pill.price { background: #e8f1f7; color: #0e4466; border: 0; }
 .adm-item-badges { display: flex; gap: 5px; margin-top: 4px; flex-wrap: wrap; }
 .adm-card-sub { margin: 4px 0 0; font-size: 13px; color: #607581; }
 .adm-sep { border: 0; border-top: 1px solid #e6ebef; margin: 22px 0; }
@@ -2162,6 +2237,54 @@ dialog.adm-drawer-dialog[open] {
   border-radius: 6px;
 }
 .adm-cabin-row input { padding: 7px 10px; border: 1px solid #cbd3da; border-radius: 4px; font-size: 12px; }
+
+.adm-standalone-price-box {
+  background: #fbf8f1;
+  border: 1px solid #e2d4b7;
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+.adm-spb-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.adm-standalone-price-box small {
+  display: block;
+  margin-top: 8px;
+  color: #6b5d47;
+  font-size: 12px;
+}
+.adm-prog-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.adm-inline-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid #d5dfe6;
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #2e4756;
+}
+.adm-inline-price input {
+  width: 82px;
+  padding: 5px 8px;
+  border: 1px solid #cbd3da;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #092434;
+  text-align: center;
+}
 
 dialog.adm-confirm-dialog {
   border: 0;
