@@ -829,6 +829,72 @@ window.NileTrailsCMS = (() => {
     programs: buildDefaultProgramsForVessel(d.slug, d.title, d.tier, d.nights, d.route, d.kind, idx % 2 === 0 ? VIDEOS.dahabiya1 : VIDEOS.dahabiya2)
   }));
 
+  const DEFAULT_FAQS = [
+    {
+      id: 'faq-nile-cruises-1',
+      scope: 'nile-cruises',
+      question: 'What is the difference between 3-Night, 4-Night, and 7-Night Nile Cruise programs?',
+      answer: 'A 3-Night program sails from Aswan to Luxor (Fri–Mon), a 4-Night program sails from Luxor to Aswan (Mon–Fri) with an extra day for West Bank & East Bank temples, and a 7-Night Round Trip combines both directions with relaxed sailing and full temple access.',
+      enabled: true
+    },
+    {
+      id: 'faq-nile-cruises-2',
+      scope: 'nile-cruises',
+      question: 'Which Nile Cruise category suits me best — Luxury, Deluxe, or Superior?',
+      answer: 'Luxury cruises deliver boutique suites, fine-dining decks, and private tour guides; Deluxe cruises balance spacious panoramic cabins and full-board service; Superior Cruises offer authentic 5-star Nile comfort with exceptional value.',
+      enabled: true
+    },
+    {
+      id: 'faq-dahabiyas-1',
+      scope: 'dahabiyas',
+      question: 'Why sail by Dahabiya instead of a standard Nile cruise ship?',
+      answer: 'A Dahabiya carries only 6 to 12 cabins under traditional lateen sails, mooring at serene archaeological islands (like El Kab and Gebel el-Silsila) where large ships cannot dock—delivering private gourmet dining and unhurried river rhythm.',
+      enabled: true
+    },
+    {
+      id: 'faq-dahabiyas-2',
+      scope: 'dahabiyas',
+      question: 'Can we charter an entire private Dahabiya for our family or group?',
+      answer: 'Yes. Select any Private Dahabiya or request full-vessel exclusivity during booking, and our concierge will customize embarkation times, children activities, and private Egyptologist guides solely for your party.',
+      enabled: true
+    },
+    {
+      id: 'faq-sightseeing-1',
+      scope: 'sightseeing',
+      question: 'How can I add Nubian Village, Abu Simbel, or Dendera & Abydos to my cruise?',
+      answer: 'Every cruise and dahabiya program features an interactive "Sightseeing with Tour Guide" section where you can click "+ Add to Journey" on any landmark—your live summary card recalculates automatically with private guide & vehicle rates.',
+      enabled: true
+    },
+    {
+      id: 'faq-all-season',
+      scope: 'all',
+      question: 'When is the best season to cruise between Luxor and Aswan?',
+      answer: 'September through April offers mild, sunny temperatures ideal for temple walks (Peak Season). May through August offers attractive Summer value rates with early-morning guided visits and shaded sun-deck sailing.',
+      enabled: true
+    },
+    {
+      id: 'faq-all-included',
+      scope: 'all',
+      question: 'Are private Egyptologist guides, entry tickets, and airport transfers included?',
+      answer: 'All programs include full-board dining on board, airport or station transfers in Luxor & Aswan, and a licensed Egyptologist for standard cruise temples. Optional excursions and VIP flights added on-page clearly show transparent per-person or per-booking totals.',
+      enabled: true
+    },
+    {
+      id: 'faq-all-children',
+      scope: 'all',
+      question: 'How do pricing and discounts work for children and solo travellers?',
+      answer: 'Children under 6 stay free, children aged 6–11.99 receive 50% off the adult cabin rate when sharing with parents, and Single Cabin rates include private occupancy—all calculated automatically in the sticky price card.',
+      enabled: true
+    },
+    {
+      id: 'faq-all-booking',
+      scope: 'all',
+      question: 'Do I pay online immediately when submitting a booking request?',
+      answer: 'No immediate online charge is made. Submitting the booking form reserves your preferred program and selected add-ons in our system so our travel concierge can confirm exact cabin availability and issue your secure travel dossier.',
+      enabled: true
+    }
+  ];
+
   const DEFAULT_DATA = {
     version: 3,
     settings: {
@@ -1109,10 +1175,20 @@ window.NileTrailsCMS = (() => {
         flightTransfer: 'Yes — Arriving via Lufthansa into Cairo / Luxor',
         notes: 'Travelling with our 11-year-old son who is fascinated by ancient Egyptian hieroglyphs.'
       }
-    ]
+    ],
+    faqs: JSON.parse(JSON.stringify(DEFAULT_FAQS))
   };
 
   let state = JSON.parse(JSON.stringify(DEFAULT_DATA));
+
+  function ensureRequiredCollections(targetState) {
+    if (!Array.isArray(targetState.sightseeingPlaces) || !targetState.sightseeingPlaces.length) {
+      targetState.sightseeingPlaces = JSON.parse(JSON.stringify(DEFAULT_SIGHTSEEING_PLACES));
+    }
+    if (!Array.isArray(targetState.faqs) || !targetState.faqs.length) {
+      targetState.faqs = JSON.parse(JSON.stringify(DEFAULT_FAQS));
+    }
+  }
 
   function loadLocal() {
     try {
@@ -1121,9 +1197,7 @@ window.NileTrailsCMS = (() => {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.version === DEFAULT_DATA.version) {
           state = { ...JSON.parse(JSON.stringify(DEFAULT_DATA)), ...parsed };
-          if (!Array.isArray(state.sightseeingPlaces) || !state.sightseeingPlaces.length) {
-            state.sightseeingPlaces = JSON.parse(JSON.stringify(DEFAULT_SIGHTSEEING_PLACES));
-          }
+          ensureRequiredCollections(state);
         }
       }
     } catch (e) {
@@ -1139,9 +1213,7 @@ window.NileTrailsCMS = (() => {
         const serverData = await res.json();
         if (serverData && serverData.version === DEFAULT_DATA.version) {
           state = { ...JSON.parse(JSON.stringify(DEFAULT_DATA)), ...serverData };
-          if (!Array.isArray(state.sightseeingPlaces) || !state.sightseeingPlaces.length) {
-            state.sightseeingPlaces = JSON.parse(JSON.stringify(DEFAULT_SIGHTSEEING_PLACES));
-          }
+          ensureRequiredCollections(state);
           localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
           return state;
         } else {
@@ -1259,6 +1331,7 @@ window.NileTrailsCMS = (() => {
     DEFAULT_DATA,
     DEFAULT_FACILITIES,
     DEFAULT_SIGHTSEEING_PLACES,
+    DEFAULT_FAQS,
     VIDEOS
   };
 })();

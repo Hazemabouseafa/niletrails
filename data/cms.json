@@ -81,6 +81,93 @@
   },
   "cruises": [
     {
+      "id": "vessel-1794320486453",
+      "slug": "custom-nile-cruise-271",
+      "title": "New Luxury Nile Cruise",
+      "tier": "Luxury",
+      "route": "Luxor → Aswan",
+      "nights": 4,
+      "image": "assets/nile-cruise.webp",
+      "tag": "Bespoke Voyage",
+      "kind": "cruise",
+      "sub": "Tailored Nile sailing with curated programs and private guided excursions.",
+      "enabled": true,
+      "showOnHome": true,
+      "programs": [
+        {
+          "id": "custom-nile-cruise-271-prog-1",
+          "slug": "classic-program",
+          "title": "4-Night Classic Luxor to Aswan Program",
+          "badge": "Featured Program",
+          "duration": "5 Days / 4 Nights",
+          "nights": 4,
+          "route": "Luxor → Edfu → Kom Ombo → Aswan",
+          "departureDays": "Every Monday & Saturday",
+          "basePrice": 950,
+          "summary": "Full-board luxury cruise program with private Egyptologist guide and temple visits.",
+          "canBeAddonForOthers": false,
+          "allowedAddonIds": [
+            "ALL"
+          ],
+          "highlights": [
+            "Private airport transfers",
+            "Full-board gourmet dining",
+            "Guided temple excursions"
+          ],
+          "included": [
+            "4 nights accommodation onboard",
+            "All temple entry tickets",
+            "Private Egyptologist guide"
+          ],
+          "excluded": [
+            "International flights",
+            "Personal expenses"
+          ],
+          "cabins": [
+            {
+              "id": "deluxe",
+              "name": "Deluxe River-View Cabin",
+              "priceDelta": 0,
+              "desc": "Panoramic window"
+            },
+            {
+              "id": "suite",
+              "name": "Royal Suite",
+              "priceDelta": 400,
+              "desc": "Private balcony & lounge"
+            }
+          ],
+          "itinerary": [
+            {
+              "day": "Day 01",
+              "title": "Embarkation in Luxor & Karnak Temple",
+              "desc": "Transfer to vessel, welcome lunch and afternoon tour of Karnak and Luxor Temples."
+            },
+            {
+              "day": "Day 02",
+              "title": "Valley of the Kings & Sailing to Edfu",
+              "desc": "Explore the West Bank royal tombs before sailing south."
+            },
+            {
+              "day": "Day 03",
+              "title": "Edfu & Kom Ombo Temples",
+              "desc": "Visit Horus Temple at Edfu and sunset at Kom Ombo."
+            },
+            {
+              "day": "Day 04",
+              "title": "Aswan, Philae Island & Felucca Sail",
+              "desc": "Visit Philae Temple and sail by felucca around Elephantine Island."
+            },
+            {
+              "day": "Day 05",
+              "title": "Disembarkation in Aswan",
+              "desc": "Breakfast onboard and private transfer to airport or your chosen Add-on Program."
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "cruise-1",
       "slug": "luxury-nile-cruise-4-nights",
       "title": "Luxury Nile Cruise (MS Sara / Oberoi Class)",
@@ -5402,6 +5489,86 @@
   ],
   "customPages": [
     {
+      "id": "page-1794320781495",
+      "slug": "special-egypt-collection-66",
+      "title": "New Custom Experience Page",
+      "eyebrow": "BESPOKE COLLECTION",
+      "subtitle": "A custom page created from the Admin Dashboard with curated programs and booking options.",
+      "heroImage": "assets/nile-sailing.webp",
+      "enabled": true,
+      "showOnHome": true,
+      "homeCardTag": "Featured Page",
+      "showInNavbar": true,
+      "navParent": "top",
+      "showInFooter": true,
+      "blocks": [
+        {
+          "id": "blk-1794320781495-1",
+          "type": "editorial",
+          "eyebrow": "WELCOME",
+          "heading": "Crafted around <em>your vision.</em>",
+          "body": "You can edit this text, add cruise programs, showcase add-ons, or embed a booking form directly from the Admin Control Panel.",
+          "ctaText": "Explore Nile Cruises",
+          "ctaUrl": "nile-cruises"
+        },
+        {
+          "id": "blk-1794320781495-2",
+          "type": "programs-showcase",
+          "eyebrow": "CURATED CRUISES & PROGRAMS",
+          "heading": "Select your <em>sailing program.</em>",
+          "sub": "Each cruise features customizable programs and add-on extensions.",
+          "cruiseSlugs": [
+            "luxury-nile-cruise-4-nights",
+            "luxury-dahabiya-sailing"
+          ]
+        },
+        {
+          "id": "blk-1794320781495-3",
+          "type": "booking-form"
+        }
+      ]
+    },
+    {
+      "id": "page-1794320780751",
+      "slug": "special-egypt-collection-49",
+      "title": "New Custom Experience Page",
+      "eyebrow": "BESPOKE COLLECTION",
+      "subtitle": "A custom page created from the Admin Dashboard with curated programs and booking options.",
+      "heroImage": "assets/nile-sailing.webp",
+      "enabled": true,
+      "showOnHome": true,
+      "homeCardTag": "Featured Page",
+      "showInNavbar": true,
+      "navParent": "top",
+      "showInFooter": true,
+      "blocks": [
+        {
+          "id": "blk-1794320780752-1",
+          "type": "editorial",
+          "eyebrow": "WELCOME",
+          "heading": "Crafted around <em>your vision.</em>",
+          "body": "You can edit this text, add cruise programs, showcase add-ons, or embed a booking form directly from the Admin Control Panel.",
+          "ctaText": "Explore Nile Cruises",
+          "ctaUrl": "nile-cruises"
+        },
+        {
+          "id": "blk-1794320780752-2",
+          "type": "programs-showcase",
+          "eyebrow": "CURATED CRUISES & PROGRAMS",
+          "heading": "Select your <em>sailing program.</em>",
+          "sub": "Each cruise features customizable programs and add-on extensions.",
+          "cruiseSlugs": [
+            "luxury-nile-cruise-4-nights",
+            "luxury-dahabiya-sailing"
+          ]
+        },
+        {
+          "id": "blk-1794320780752-3",
+          "type": "booking-form"
+        }
+      ]
+    },
+    {
       "id": "page-private-celebrations",
       "slug": "private-celebrations-and-honeymoons",
       "title": "Honeymoons & Private Nile Celebrations",
@@ -5469,6 +5636,64 @@
     }
   ],
   "enquiries": [
+    {
+      "id": "NT-2026-2913",
+      "createdAt": "2026-11-10 14:20",
+      "status": "New",
+      "vesselTitle": "Custom Journey Planner (journey)",
+      "programTitle": "dsadsa (Flexible)",
+      "cabinName": "Luxury",
+      "checkInDate": "Flexible",
+      "adults": "2",
+      "children": 0,
+      "selectedAddons": [
+        {
+          "id": "plan-addon",
+          "title": "Bahariya Oasis & White Desert Luxury Camping Program",
+          "price": 0
+        }
+      ],
+      "estimatedTotal": "Custom Quote",
+      "clientName": "hazem",
+      "clientEmail": "hazem@hazem.my",
+      "clientPhone": "+1303030303",
+      "nationality": "United States",
+      "dietary": "No restrictions",
+      "notes": ""
+    },
+    {
+      "id": "NT-2026-2692",
+      "createdAt": "2026-11-10 14:14",
+      "status": "New",
+      "vesselSlug": "luxury-nile-cruise-4-nights",
+      "vesselTitle": "Luxury Nile Cruise (MS Sara / Oberoi Class)",
+      "programId": "luxury-nile-cruise-4-nights-prog-4n",
+      "programSlug": "4-nights-luxor-to-aswan",
+      "programTitle": "5 Days / 4 Nights — Luxor to Aswan Sailing Program",
+      "cabinName": "Double Cabin (Most Chosen by Couples)",
+      "bedConfig": "King / Double Bed",
+      "checkInDate": "2026-11-24",
+      "dateFlexibility": "Flexible (±3 days)",
+      "adults": 2,
+      "children": 0,
+      "selectedAddons": [
+        {
+          "id": "luxury-nile-cruise-4-nights-prog-7n",
+          "title": "8 Days / 7 Nights — Complete Round-Trip Nile Cruise Program (Luxury Nile Cruise (MS Sara / Oberoi Class))",
+          "price": 1690
+        }
+      ],
+      "estimatedTotal": 5480,
+      "clientName": "321321312321",
+      "clientEmail": "hazem@hazem.my",
+      "clientPhone": "+1 494949499",
+      "nationality": "United States",
+      "passportReady": "Valid Passport (>6 months)",
+      "dietary": "No restrictions",
+      "occasion": "English-Speaking Egyptologist Guide",
+      "flightTransfer": "Yes — Arrange complimentary private airport pickup",
+      "notes": "dsadasdsadsa"
+    },
     {
       "id": "NT-2026-8419",
       "createdAt": "2026-11-08 14:30",

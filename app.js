@@ -70,6 +70,24 @@
       ...activeDestinations.filter(d => d.slug !== 'nubian-and-the-nile').map(d => [d.name, 'beyond-the-nile/' + d.slug])
     ];
 
+    const customByParent = {};
+    const topCustomMenus = [];
+    customPages.forEach(cp => {
+      const pageUrl = `page/${cp.slug}`;
+      if (cp.navParent === 'top') {
+        topCustomMenus.push({
+          key: cp.slug,
+          name: cp.title,
+          url: pageUrl,
+          children: [[cp.title, pageUrl]]
+        });
+      } else {
+        const parentKey = cp.navParent || 'about';
+        if (!customByParent[parentKey]) customByParent[parentKey] = [];
+        customByParent[parentKey].push([cp.title, pageUrl]);
+      }
+    });
+
     const baseMenus = [
       {
         key: 'nile-cruises',
@@ -79,8 +97,10 @@
           ['All Nile Cruises', 'nile-cruises'],
           ['Luxury Cruises', 'nile-cruises?category=luxury'],
           ['Deluxe Cruises', 'nile-cruises?category=deluxe'],
-          ['Superior Cruises', 'nile-cruises?category=superior'],
-          ...activeCruises.slice(0, 4).map(c => [`${c.title} (${c.nights}N)`, `nile-cruises/${c.slug}`])
+          ...activeCruises.slice(0, 4).map(c => [`${c.title} (${c.nights}N)`, `nile-cruises/${c.slug}`]),
+          ...(customByParent['nile-cruises'] || []),
+          // Superior Cruises is ALWAYS the last option in Nile Cruises dropdown
+          ['Superior Cruises', 'nile-cruises?category=superior']
         ]
       },
       {
@@ -92,21 +112,29 @@
           ['Luxury Sailing', 'dahabiyas?category=luxury'],
           ['Deluxe Traditional', 'dahabiyas?category=deluxe'],
           ['Private Dahabiyas', 'dahabiyas?category=private'],
-          ['Why Sail by Dahabiya?', 'dahabiyas/why-sail-by-dahabiya'],
-          ...activeDahabiyas.map(d => [d.title, `dahabiyas/${d.slug}`])
+          ...activeDahabiyas.map(d => [d.title, `dahabiyas/${d.slug}`]),
+          ...(customByParent['dahabiyas'] || []),
+          // Why Dahabiyas is ALWAYS the last option in Dahabiyas dropdown
+          ['Why Dahabiyas', 'dahabiyas/why-sail-by-dahabiya']
         ]
       },
       {
         key: 'journeys',
         name: 'Journeys',
         url: 'journeys',
-        children: activeJourneys.map(j => [j.name, 'journeys/' + j.slug])
+        children: [
+          ...activeJourneys.map(j => [j.name, 'journeys/' + j.slug]),
+          ...(customByParent['journeys'] || [])
+        ]
       },
       {
         key: 'beyond-the-nile',
         name: 'Beyond the Nile',
         url: 'beyond-the-nile',
-        children: beyondChildren
+        children: [
+          ...beyondChildren,
+          ...(customByParent['beyond-the-nile'] || [])
+        ]
       },
       {
         key: 'nile-stories',
@@ -116,7 +144,8 @@
           ['All stories', 'nile-stories'],
           ['Nile Cruise Guide', 'nile-stories?category=nile-cruise-guide'],
           ['Dahabiya Life', 'nile-stories?category=dahabiya-life'],
-          ['Travel Tips', 'nile-stories']
+          ['Travel Tips', 'nile-stories'],
+          ...(customByParent['nile-stories'] || [])
         ]
       },
       {
@@ -128,25 +157,12 @@
           ['Why NileTrails', 'about/why-niletrails'],
           ['Our Team', 'about/our-team'],
           ['Travel Information', 'travel-information'],
-          ['Contact', 'contact']
+          ['Contact', 'contact'],
+          ...(customByParent['about'] || [])
         ]
-      }
+      },
+      ...topCustomMenus
     ];
-
-    customPages.forEach(cp => {
-      const pageUrl = `page/${cp.slug}`;
-      if (cp.navParent === 'top') {
-        baseMenus.push({
-          key: cp.slug,
-          name: cp.title,
-          url: pageUrl,
-          children: [[cp.title, pageUrl]]
-        });
-      } else {
-        const target = baseMenus.find(m => m.key === cp.navParent) || baseMenus[baseMenus.length - 1];
-        target.children.push([cp.title, pageUrl]);
-      }
-    });
 
     return baseMenus;
   }
@@ -704,7 +720,16 @@
       </nav>
 
       <!-- MAIN TWO-COLUMN NCT LAYOUT -->
-      <section class="wrap nct-layout" id="program-workspace" data-base-price="${basePrice}" data-currency="${esc(cur)}">
+      <section class="wrap nct-layout" id="program-workspace"
+        data-base-price="${basePrice}"
+        data-summer-double="${summerDouble}"
+        data-winter-double="${winterDouble}"
+        data-summer-triple="${summerTriple}"
+        data-winter-triple="${winterTriple}"
+        data-summer-single="${summerSingle}"
+        data-winter-single="${winterSingle}"
+        data-active-season="summer"
+        data-currency="${esc(cur)}">
         <!-- LEFT MAIN ARTICLE -->
         <article class="nct-main">
 
@@ -863,14 +888,14 @@
             </div>
 
             <div class="nct-pcards">
-              <div class="nct-pcard">
+              <div class="nct-pcard" data-select-cabin="Triple Cabin" role="button" tabindex="0" aria-label="Select Triple Cabin">
                 <div class="nct-pc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7h18v10H3zM3 11h18M7 7V5h10v2"/></svg></div>
                 <h4>Triple Cabin</h4>
                 <div class="nct-pc-sub">3 persons sharing</div>
                 <div class="nct-pc-price">${cur}<span class="nct-pv" data-summer="${summerTriple}" data-winter="${winterTriple}">${summerTriple}</span><span> /pp</span></div>
                 <div class="nct-pc-note">per person, full board</div>
               </div>
-              <div class="nct-pcard pop">
+              <div class="nct-pcard pop is-selected" data-select-cabin="Double Cabin" role="button" tabindex="0" aria-label="Select Double Cabin">
                 <span class="nct-pop-tag">MOST POPULAR</span>
                 <div class="nct-pc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7h18v10H3zM3 11h18"/></svg></div>
                 <h4>Double Cabin</h4>
@@ -878,7 +903,7 @@
                 <div class="nct-pc-price">${cur}<span class="nct-pv" data-summer="${summerDouble}" data-winter="${winterDouble}">${summerDouble}</span><span> /pp</span></div>
                 <div class="nct-pc-note">most chosen by couples</div>
               </div>
-              <div class="nct-pcard">
+              <div class="nct-pcard" data-select-cabin="Single Cabin" role="button" tabindex="0" aria-label="Select Single Cabin">
                 <div class="nct-pc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16v10H4zM4 11h16"/></svg></div>
                 <h4>Single Cabin</h4>
                 <div class="nct-pc-sub">Private occupancy</div>
@@ -1165,10 +1190,14 @@
 
         <!-- RIGHT STICKY BOOKING & LIVE SUMMARY SIDEBAR (like nilecruisetrips.com) -->
         <aside class="nct-aside-sticky">
-          <div class="nct-bookcard">
+          <div class="nct-bookcard" id="live-price-card" aria-live="polite">
             <div class="nct-bc-top">
-              <div class="nct-bc-from">Starting From</div>
-              <div class="nct-bc-price">${cur}${basePrice} <span>/ person</span></div>
+              <div class="nct-bc-top-row">
+                <div class="nct-bc-from" id="bc-top-label">LIVE PACKAGE PRICE</div>
+                <span class="nct-bc-season-pill" id="bc-season-pill">May – Aug</span>
+              </div>
+              <div class="nct-bc-price" id="bc-top-price">${cur}${(basePrice * 2).toLocaleString()} <span>total · ${cur}${basePrice}/pp</span></div>
+              <div class="nct-bc-breakdown-mini" id="bc-top-breakdown">Cruise ${cur}${(basePrice * 2).toLocaleString()} · 0 Extras Added</div>
               <div class="nct-bc-rate"><span class="stars">★★★★★</span> Rated 5.0 · Private Egyptologist Included</div>
             </div>
 
@@ -1189,13 +1218,17 @@
               </div>
 
               <dl class="live-summary-dl">
+                <div><dt>Season</dt><dd id="sum-season-name">May – Aug (Summer)</dd></div>
                 <div><dt>Cabin</dt><dd id="sum-cabin-name">Double Cabin</dd></div>
                 <div><dt>Travellers</dt><dd id="sum-guests">2 Adults</dd></div>
-                <div><dt>Base Rate</dt><dd id="sum-base-calc">${cur}${basePrice} × 2</dd></div>
+                <div><dt>Base Rate</dt><dd id="sum-base-calc">${cur}${basePrice} × 2 = ${cur}${(basePrice * 2).toLocaleString()}</dd></div>
               </dl>
 
               <div class="sum-addons-box">
-                <span class="sum-addons-label">ADDED SIGHTSEEING & EXTENSIONS:</span>
+                <div class="sum-addons-head">
+                  <span class="sum-addons-label">ADDED SIGHTSEEING & EXTENSIONS (<strong id="sum-extras-count">0</strong>):</span>
+                  <strong class="sum-extras-sub" id="sum-extras-subtotal">${cur}0</strong>
+                </div>
                 <ul id="sum-addons-list">
                   <li class="empty-addon-note">Tick any Sightseeing Tour or Program Add-on on the left to add it to your journey.</li>
                 </ul>
@@ -1651,6 +1684,63 @@
     return `<section class="notfound wrap"><span>404</span><h1>A different route awaits.</h1><p>That page isn’t part of this journey. Return to the NileTrails homepage.</p>${button('Back to Home', '', 'btn-primary')}</section>`;
   }
 
+  function renderPageFaqSection(scope = 'all') {
+    const st = CMS.getState();
+    const allEnabled = (st.faqs || CMS.DEFAULT_FAQS || []).filter(f => f && f.enabled !== false);
+    if (!allEnabled.length) return '';
+
+    const seen = new Set();
+    const picked = [];
+    const pushItem = (item) => {
+      if (!item || seen.has(item.id)) return;
+      seen.add(item.id);
+      picked.push(item);
+    };
+
+    // 1. Page-specific FAQs first
+    allEnabled.filter(f => f.scope === scope).forEach(pushItem);
+    // 2. Global FAQs next
+    allEnabled.filter(f => !f.scope || f.scope === 'all').forEach(pushItem);
+    // 3. Ensure every page always shows helpful FAQs even if custom filters exist
+    if (picked.length < 4) {
+      allEnabled.forEach(pushItem);
+    }
+
+    const visibleFaqs = picked.slice(0, 7);
+    if (!visibleFaqs.length) return '';
+
+    const scopeLabels = {
+      home: 'NILE CRUISES & DAHABIYAS · FAQ',
+      'nile-cruises': 'NILE CRUISES · FREQUENTLY ASKED QUESTIONS',
+      dahabiyas: 'DAHABIYA SAILING · FREQUENTLY ASKED QUESTIONS',
+      sightseeing: 'SIGHTSEEING & NUBIAN EXCURSIONS · FAQ',
+      journeys: 'TAILORED EGYPT JOURNEYS · FAQ'
+    };
+
+    return `
+      <section class="faq-section accordion wrap section-space" id="page-faq" aria-labelledby="page-faq-heading">
+        <div class="faq-header-row">
+          <div>
+            ${label(scopeLabels[scope] || 'FREQUENTLY ASKED QUESTIONS')}
+            <h2 id="page-faq-heading">Everything you need to know<br><em>before you set sail.</em></h2>
+          </div>
+          <button type="button" class="button btn-outline faq-toggle-all-btn" id="faq-toggle-all" aria-expanded="false">
+            <span class="faq-expand-lbl">Expand All</span>
+            <span class="faq-collapse-lbl">Collapse All</span>
+          </button>
+        </div>
+        <div class="faq-list">
+          ${visibleFaqs.map((faq, idx) => `
+            <details class="faq-item"${idx === 0 ? ' open' : ''}>
+              <summary>${esc(faq.question)}</summary>
+              <div class="faq-answer"><p>${esc(faq.answer)}</p></div>
+            </details>
+          `).join('')}
+        </div>
+      </section>
+    `;
+  }
+
   function route() {
     const st = CMS.getState();
     const raw = location.hash.replace(/^#\/?/, '').split('?')[0].replace(/^\/+|\/+$/g, '');
@@ -1741,8 +1831,22 @@
       }
     }
 
+    const faqScopeMap = {
+      '': 'home',
+      'nile-cruises': 'nile-cruises',
+      'dahabiyas': 'dahabiyas',
+      'beyond-the-nile': 'sightseeing',
+      'journeys': 'journeys',
+      'nile-stories': 'nile-stories',
+      'about': 'about',
+      'plan-your-journey': 'plan',
+      'contact': 'contact',
+      'travel-information': 'travel-info'
+    };
+    const faqScope = faqScopeMap[seg[0] || ''] || 'all';
+
     document.title = title + ' | ' + (st.settings?.brandName || 'NileTrails');
-    $('#app').innerHTML = header() + `<main id="main">${body}</main>` + footer();
+    $('#app').innerHTML = header() + `<main id="main">${body}${renderPageFaqSection(faqScope)}</main>` + footer();
     bind();
   }
 
@@ -1753,6 +1857,7 @@
 
     const basePrice = Number(workspace.dataset.basePrice) || 750;
     const cur = workspace.dataset.currency || '$';
+    let lastGrandTotal = null;
 
     const dateInput = $('#bf-checkin', form);
     if (dateInput && !dateInput.value) {
@@ -1761,14 +1866,50 @@
       dateInput.value = d.toISOString().split('T')[0];
     }
 
-    function recalculateSummary() {
+    function getSeasonRates(season) {
+      const s = season === 'winter' ? 'winter' : 'summer';
+      return {
+        season: s,
+        doubleRate: Number(workspace.dataset[s + 'Double']) || basePrice,
+        tripleRate: Number(workspace.dataset[s + 'Triple']) || Math.round(basePrice * 0.96),
+        singleRate: Number(workspace.dataset[s + 'Single']) || Math.round(basePrice * 1.65)
+      };
+    }
+
+    const cabinKey = (s) => {
+      const l = String(s || '').toLowerCase();
+      if (l.includes('triple')) return 'triple';
+      if (l.includes('single')) return 'single';
+      if (l.includes('double')) return 'double';
+      return l.trim();
+    };
+
+    function recalculateSummary(animatePulse = false) {
+      const activeSeason = workspace.dataset.activeSeason === 'winter' ? 'winter' : 'summer';
+      const rates = getSeasonRates(activeSeason);
       const checkedCabin = $('input[name="cabinName"]:checked', form);
       const cabinDelta = Number(checkedCabin?.dataset.cabinDelta) || 0;
-      const cabinName = checkedCabin?.value || 'Double Cabin';
+      const cabinName = workspace.dataset.overrideCabin || checkedCabin?.value || 'Double Cabin';
       const adults = Number($('#bf-adults', form)?.value) || 2;
       const children = Number($('#bf-children', form)?.value) || 0;
 
-      const ratePerAdult = basePrice + cabinDelta;
+      // Sync visual selection states between Step 01 radios and Pricing cards
+      const selectedKey = cabinKey(cabinName);
+      $$('.cabin-radio-card', form).forEach(lbl => {
+        const inp = lbl.querySelector('input[type="radio"]');
+        lbl.classList.toggle('is-selected', Boolean(inp && inp.checked && !workspace.dataset.overrideCabin));
+      });
+      $$('.nct-pcard[data-select-cabin]', workspace).forEach(card => {
+        const cardKey = cabinKey(card.dataset.selectCabin);
+        card.classList.toggle('is-selected', cardKey === selectedKey);
+      });
+
+      const lowerCabin = cabinName.toLowerCase();
+      let ratePerAdult = rates.doubleRate + cabinDelta;
+      if (lowerCabin.includes('triple')) ratePerAdult = rates.tripleRate;
+      else if (lowerCabin.includes('single')) ratePerAdult = rates.singleRate;
+      else if (lowerCabin.includes('double')) ratePerAdult = rates.doubleRate;
+
       const guestMultiplier = adults + (children * 0.5);
       const baseTotal = Math.round(ratePerAdult * guestMultiplier);
 
@@ -1783,9 +1924,18 @@
       checkedSightseeing.forEach(chk => {
         const sTitle = chk.dataset.sightTitle || 'Sightseeing Tour';
         const sPrice = Number(chk.dataset.sightPrice) || 0;
-        const itemCost = Math.round(sPrice * guestMultiplier);
+        const sUnit = chk.dataset.sightUnit || 'per person';
+        const itemCost = sUnit.includes('booking') ? sPrice : Math.round(sPrice * guestMultiplier);
         addonsTotal += itemCost;
-        addonsHtml.push(`<li><span>🏛 ${esc(sTitle)}</span><strong>+${cur}${itemCost}</strong></li>`);
+        addonsHtml.push(`
+          <li>
+            <span>🏛 ${esc(sTitle)}</span>
+            <span class="sum-item-actions">
+              <strong>+${cur}${itemCost.toLocaleString()}</strong>
+              <button type="button" class="sum-remove-btn" data-remove-chk="${esc(chk.id)}" title="Remove ${esc(sTitle)}" aria-label="Remove ${esc(sTitle)}">×</button>
+            </span>
+          </li>
+        `);
         allSelectedItems.push({ id: chk.value, title: sTitle, price: sPrice });
       });
 
@@ -1795,15 +1945,47 @@
         const aUnit = chk.dataset.addonUnit || 'per person';
         const itemCost = aUnit.includes('booking') ? aPrice : Math.round(aPrice * guestMultiplier);
         addonsTotal += itemCost;
-        addonsHtml.push(`<li><span>✦ ${esc(aTitle)}</span><strong>+${cur}${itemCost}</strong></li>`);
+        addonsHtml.push(`
+          <li>
+            <span>✦ ${esc(aTitle)}</span>
+            <span class="sum-item-actions">
+              <strong>+${cur}${itemCost.toLocaleString()}</strong>
+              <button type="button" class="sum-remove-btn" data-remove-chk="${esc(chk.id)}" title="Remove ${esc(aTitle)}" aria-label="Remove ${esc(aTitle)}">×</button>
+            </span>
+          </li>
+        `);
         allSelectedItems.push({ id: chk.value, title: aTitle, price: aPrice });
       });
 
       const grandTotal = baseTotal + addonsTotal;
+      const perPersonAvg = guestMultiplier > 0 ? Math.round(grandTotal / guestMultiplier) : grandTotal;
+      const seasonShort = activeSeason === 'winter' ? 'Sep – Apr' : 'May – Aug';
+      const seasonFull = activeSeason === 'winter' ? 'Sep – Apr (Peak)' : 'May – Aug (Summer)';
+      const guestsLabel = `${adults} Adult${adults > 1 ? 's' : ''}${children > 0 ? `, ${children} Child${children > 1 ? 'ren' : ''}` : ''}`;
 
+      // Update TOP Sticky Price Card Header automatically
+      if ($('#bc-top-label')) {
+        $('#bc-top-label').textContent = allSelectedItems.length
+          ? `LIVE PACKAGE · ${allSelectedItems.length} ADDED`
+          : 'LIVE PACKAGE PRICE';
+      }
+      if ($('#bc-season-pill')) $('#bc-season-pill').textContent = seasonShort;
+      if ($('#bc-top-price')) {
+        $('#bc-top-price').innerHTML = `${cur}${grandTotal.toLocaleString()} <span>total · ${cur}${perPersonAvg.toLocaleString()}/pp</span>`;
+      }
+      if ($('#bc-top-breakdown')) {
+        $('#bc-top-breakdown').textContent = allSelectedItems.length
+          ? `Cruise ${cur}${baseTotal.toLocaleString()} + ${allSelectedItems.length} Extras (${cur}${addonsTotal.toLocaleString()}) · ${guestsLabel}`
+          : `Cruise ${cur}${baseTotal.toLocaleString()} · ${guestsLabel} · 0 Extras`;
+      }
+
+      if ($('#sum-season-name')) $('#sum-season-name').textContent = seasonFull;
       if ($('#sum-cabin-name')) $('#sum-cabin-name').textContent = cabinName;
-      if ($('#sum-guests')) $('#sum-guests').textContent = `${adults} Adult${adults > 1 ? 's' : ''}${children > 0 ? `, ${children} Child${children > 1 ? 'ren' : ''}` : ''}`;
-      if ($('#sum-base-calc')) $('#sum-base-calc').textContent = `${cur}${ratePerAdult} × ${adults}${children ? ` + ${children} chd` : ''} = ${cur}${baseTotal}`;
+      if ($('#sum-guests')) $('#sum-guests').textContent = guestsLabel;
+      if ($('#sum-base-calc')) $('#sum-base-calc').textContent = `${cur}${ratePerAdult} × ${adults}${children ? ` + ${children} chd` : ''} = ${cur}${baseTotal.toLocaleString()}`;
+      if ($('#sum-extras-count')) $('#sum-extras-count').textContent = String(allSelectedItems.length);
+      if ($('#sum-extras-subtotal')) $('#sum-extras-subtotal').textContent = addonsTotal > 0 ? `+${cur}${addonsTotal.toLocaleString()}` : `${cur}0`;
+
       if ($('#sum-addons-list')) {
         $('#sum-addons-list').innerHTML = addonsHtml.length
           ? addonsHtml.join('')
@@ -1811,12 +1993,65 @@
       }
       if ($('#sum-grand-total')) $('#sum-grand-total').textContent = `${cur}${grandTotal.toLocaleString()}`;
       if ($('#bf-inline-total')) $('#bf-inline-total').textContent = `${cur}${grandTotal.toLocaleString()}`;
-      if ($('#bf-inline-sub')) $('#bf-inline-sub').textContent = `For ${adults} Adult${adults > 1 ? 's' : ''}${children ? ` & ${children} Child` : ''} · ${allSelectedItems.length} Add-on${allSelectedItems.length === 1 ? '' : 's'} / Sightseeing included`;
+      if ($('#bf-inline-sub')) $('#bf-inline-sub').textContent = `For ${adults} Adult${adults > 1 ? 's' : ''}${children ? ` & ${children} Child` : ''} (${seasonShort}) · ${allSelectedItems.length} Add-on${allSelectedItems.length === 1 ? '' : 's'} / Sightseeing included`;
+
+      if (animatePulse && lastGrandTotal !== null && lastGrandTotal !== grandTotal) {
+        const card = $('#live-price-card');
+        if (card) {
+          card.classList.remove('price-updated');
+          void card.offsetWidth;
+          card.classList.add('price-updated');
+        }
+      }
+      lastGrandTotal = grandTotal;
 
       return { grandTotal, cabinName, adults, children, selectedAddons: allSelectedItems };
     }
 
-    form.addEventListener('change', recalculateSummary);
+    // Remove item directly from Sticky Card list
+    $('#sum-addons-list')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-remove-chk]');
+      if (!btn) return;
+      const targetId = btn.getAttribute('data-remove-chk');
+      const chk = document.getElementById(targetId);
+      if (chk && chk.checked) {
+        chk.checked = false;
+        chk.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+
+    // Clicking any Cabin Card inside #pricing selects that cabin & recalculates immediately
+    $$('.nct-pcard[data-select-cabin]', workspace).forEach(card => {
+      const selectCardCabin = () => {
+        const targetKey = cabinKey(card.dataset.selectCabin);
+        const matchRadio = $$('input[name="cabinName"]', form).find(r => cabinKey(r.value) === targetKey);
+        if (matchRadio) {
+          delete workspace.dataset.overrideCabin;
+          matchRadio.checked = true;
+          matchRadio.dispatchEvent(new Event('change', { bubbles: true }));
+        } else {
+          workspace.dataset.overrideCabin = card.dataset.selectCabin;
+          recalculateSummary(true);
+        }
+      };
+      card.addEventListener('click', selectCardCabin);
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          selectCardCabin();
+        }
+      });
+    });
+
+    // Clear override if user clicks any explicit cabin radio in Step 01
+    $$('input[name="cabinName"]', form).forEach(r => {
+      r.addEventListener('change', () => { delete workspace.dataset.overrideCabin; });
+    });
+
+    // Expose recalculation hook for season switcher or external controls
+    workspace.addEventListener('niletrails:recalc', () => recalculateSummary(true));
+
+    form.addEventListener('change', () => recalculateSummary(true));
     $$('.sight-journey-checkbox', workspace).forEach(chk => {
       chk.addEventListener('change', () => {
         const btnText = chk.parentElement?.querySelector('.spc-add-btn-text');
@@ -1824,14 +2059,14 @@
           btnText.textContent = chk.checked ? '✓ Added to Journey' : '+ Add to Journey';
         }
         chk.closest('.sight-place-card')?.classList.toggle('is-added', chk.checked);
-        recalculateSummary();
+        recalculateSummary(true);
       });
     });
 
     form.addEventListener('input', () => {
       if ($('#bf-error-msg')) $('#bf-error-msg').textContent = '';
     });
-    recalculateSummary();
+    recalculateSummary(false);
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -2040,14 +2275,40 @@
     // Interactive Season Pricing Toggle (May – Aug vs Sep – Apr)
     $$('#nct-seg-season button').forEach(btn => {
       btn.addEventListener('click', () => {
-        const season = btn.dataset.season;
+        const season = btn.dataset.season === 'winter' ? 'winter' : 'summer';
         $$('#nct-seg-season button').forEach(b => b.classList.toggle('on', b === btn));
         $$('.nct-pv').forEach(pv => {
           const val = pv.getAttribute('data-' + season);
           if (val) pv.textContent = val;
         });
+        const ws = document.getElementById('program-workspace');
+        if (ws) {
+          ws.dataset.activeSeason = season;
+          ws.dispatchEvent(new CustomEvent('niletrails:recalc'));
+        }
       });
     });
+
+    // Accessible FAQ Expand All / Collapse All Button (modern-web-guidance accordion)
+    const faqSection = document.getElementById('page-faq');
+    const faqToggleAll = document.getElementById('faq-toggle-all');
+    if (faqSection && faqToggleAll) {
+      const faqDetails = () => $$('details.faq-item', faqSection);
+      const syncFaqButton = () => {
+        const items = faqDetails();
+        const allOpen = items.length > 0 && items.every(d => d.open);
+        faqToggleAll.setAttribute('aria-expanded', String(allOpen));
+      };
+      faqToggleAll.addEventListener('click', () => {
+        const expand = faqToggleAll.getAttribute('aria-expanded') !== 'true';
+        faqDetails().forEach(d => { d.open = expand; });
+        syncFaqButton();
+      });
+      faqDetails().forEach(d => {
+        d.addEventListener('toggle', syncFaqButton);
+      });
+      syncFaqButton();
+    }
 
     // Sightseeing Location Filter Pills (works both inside Cruise Programs and in Nubian & the Nile Hub)
     $$('.sight-filter-pills .sight-pill').forEach(pill => {

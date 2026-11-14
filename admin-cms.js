@@ -6,10 +6,15 @@ window.NileTrailsAdmin = (() => {
   const $$ = (s, c = document) => [...c.querySelectorAll(s)];
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  let activeTab = 'bookings'; // bookings | cruises | addons | pages | homepage | collections | settings
+  let activeTab = 'bookings';
   let selectedVesselId = null;
-  let editingProgramContext = null; // { vesselId, programId }
   let editingPageId = null;
+  let searchQuery = '';
+  let bookingStatusFilter = 'all';
+  let sightLocationFilter = 'all';
+  let faqScopeFilter = 'all';
+  let collectionSubTab = 'journeys';
+  let lastSavedTime = '';
   let toastTimer = null;
 
   const PRESET_IMAGES = [
@@ -19,109 +24,323 @@ window.NileTrailsAdmin = (() => {
   ];
 
   const PRESET_VIDEOS = [
-    ['مقطع 1 — النيل الرئيسي (Hero Main MP4)', 'assets/videos/hero-main.mp4'],
-    ['مقطع 2 — كروز النيل (Cruise Segment 1)', 'assets/videos/hero-cruise-1.mp4'],
-    ['مقطع 3 — كروز النيل (Cruise Segment 2)', 'assets/videos/hero-cruise-2.mp4'],
-    ['مقطع 4 — كروز النيل (Cruise Segment 3)', 'assets/videos/hero-cruise-3.mp4'],
-    ['مقطع 5 — الدهبية الشراعية (Dahabiya Segment 1)', 'assets/videos/hero-dahabiya-1.mp4'],
-    ['مقطع 6 — الدهبية والنوبة (Dahabiya Segment 2)', 'assets/videos/hero-dahabiya-2.mp4'],
-    ['رابط يوتيوب كامل (YouTube Autoplay)', 'https://www.youtube.com/watch?v=otvczRRDdRI']
+    ['فيديو 1 — النيل الرئيسي (Hero Main MP4)', 'assets/videos/hero-main.mp4'],
+    ['فيديو 2 — كروز النيل 1 (Cruise Segment 1)', 'assets/videos/hero-cruise-1.mp4'],
+    ['فيديو 3 — كروز النيل 2 (Cruise Segment 2)', 'assets/videos/hero-cruise-2.mp4'],
+    ['فيديو 4 — كروز النيل 3 (Cruise Segment 3)', 'assets/videos/hero-cruise-3.mp4'],
+    ['فيديو 5 — الدهبية الشراعية 1 (Dahabiya 1)', 'assets/videos/hero-dahabiya-1.mp4'],
+    ['فيديو 6 — الدهبية والنوبة 2 (Dahabiya 2)', 'assets/videos/hero-dahabiya-2.mp4'],
+    ['رابط يوتيوب (YouTube Autoplay)', 'https://www.youtube.com/watch?v=otvczRRDdRI']
   ];
 
-  function showToast(msg) {
+  const FAQ_SCOPES = [
+    ['all', 'كل الصفحات (عام)'],
+    ['home', 'الصفحة الرئيسية (Home)'],
+    ['nile-cruises', 'الكروزات النيلية (Nile Cruises)'],
+    ['dahabiyas', 'الذهبيات الشراعية (Dahabiyas)'],
+    ['sightseeing', 'المزارات والـ Nubian & Nile'],
+    ['journeys', 'البرامج المتكاملة (Journeys)'],
+    ['about', 'عن الشركة / التواصل']
+  ];
+
+  function slugify(str) {
+    return String(str || '').toLowerCase().trim().replace(/[^a-z0-9\u0600-\u06FF]+/g, '-').replace(/^-+|-+$/g, '') || ('item-' + Date.now());
+  }
+
+  function showToast(msg, tone = 'success') {
     let el = $('#cms-toast');
     if (!el) {
       el = document.createElement('div');
       el.id = 'cms-toast';
-      el.className = 'cms-toast';
+      el.className = 'adm-toast';
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
       document.body.appendChild(el);
     }
-    el.textContent = '✓ ' + msg;
+    el.dataset.tone = tone;
+    el.innerHTML = `<span class="adm-toast-ic">${tone === 'error' ? '!' : '✓'}</span><span>${esc(msg)}</span>`;
     el.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
   }
 
-  function slugify(text) {
-    return String(text || '')
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || ('item-' + Date.now());
+  async function saveAndRefresh(containerSelector, msg = 'تم الحفظ والمزامنة مع الموقع') {
+    await CMS.save();
+    lastSavedTime = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    showToast(msg);
+    const pill = $('#adm-sync-status');
+    if (pill) {
+      pill.textContent = `متزامن ✓ (${lastSavedTime})`;
+      pill.classList.add('synced');
+    }
+    renderAdmin(containerSelector, { preserveScroll: true });
   }
 
-  // ==================== 1. BOOKINGS & ENQUIRIES TAB ====================
-  function renderBookingsTab(st) {
-    const enquiries = st.enquiries || [];
-    const cur = st.settings?.currencySymbol || '$';
-    const newCount = enquiries.filter(e => e.status === 'New').length;
+  async function uploadMediaFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const res = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: file.name, dataBase64: reader.result })
+          });
+          const data = await res.json();
+          if (!res.ok || !data.url) throw new Error(data.error || 'فشل رفع الملف');
+          resolve(data.url);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = () => reject(new Error('تعذر قراءة الملف'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function openConfirmDialog({ title, message, confirmLabel = 'تأكيد الحذف', cancelLabel = 'إلغاء' }) {
+    return new Promise(resolve => {
+      let dlg = $('#adm-confirm-dialog');
+      if (!dlg) {
+        dlg = document.createElement('dialog');
+        dlg.id = 'adm-confirm-dialog';
+        dlg.className = 'adm-confirm-dialog';
+        dlg.setAttribute('aria-labelledby', 'adm-confirm-title');
+        document.body.appendChild(dlg);
+      }
+      dlg.innerHTML = `
+        <div class="adm-confirm-box">
+          <h3 id="adm-confirm-title">${esc(title)}</h3>
+          <p>${esc(message)}</p>
+          <form method="dialog" class="adm-confirm-actions">
+            <button type="submit" value="cancel" class="adm-btn-outline" autofocus>${esc(cancelLabel)}</button>
+            <button type="submit" value="confirm" class="adm-btn-danger">${esc(confirmLabel)}</button>
+          </form>
+        </div>
+      `;
+      const onClose = () => {
+        const confirmed = dlg.returnValue === 'confirm';
+        dlg.returnValue = '';
+        dlg.removeEventListener('close', onClose);
+        resolve(confirmed);
+      };
+      dlg.addEventListener('close', onClose);
+      dlg.showModal();
+    });
+  }
+
+  function openSlideDrawer({ title, subtitle = '', bodyHtml, footerHtml = '', onOpen }) {
+    let dlg = $('#adm-drawer-dialog');
+    if (!dlg) {
+      dlg = document.createElement('dialog');
+      dlg.id = 'adm-drawer-dialog';
+      dlg.className = 'adm-drawer-dialog';
+      dlg.setAttribute('closedby', 'any');
+      dlg.setAttribute('aria-labelledby', 'adm-drawer-title');
+      document.body.appendChild(dlg);
+
+      // Progressive light-dismiss fallback when closedby isn't supported natively
+      if (!('closedBy' in HTMLDialogElement.prototype)) {
+        let pressedOutside = false;
+        dlg.addEventListener('pointerdown', (e) => {
+          const r = dlg.getBoundingClientRect();
+          pressedOutside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+        });
+        dlg.addEventListener('pointerup', (e) => {
+          const r = dlg.getBoundingClientRect();
+          const outside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+          if (pressedOutside && outside) dlg.close();
+        });
+      }
+    }
+
+    dlg.innerHTML = `
+      <div class="adm-drawer-shell">
+        <header class="adm-drawer-head">
+          <div>
+            <h3 id="adm-drawer-title">${esc(title)}</h3>
+            ${subtitle ? `<p class="adm-drawer-sub">${esc(subtitle)}</p>` : ''}
+          </div>
+          <button type="button" class="adm-drawer-close" id="adm-drawer-close-btn" aria-label="إغلاق النافذة">✕</button>
+        </header>
+        <div class="adm-drawer-body" id="adm-drawer-body">
+          ${bodyHtml}
+        </div>
+        ${footerHtml ? `<footer class="adm-drawer-foot">${footerHtml}</footer>` : ''}
+      </div>
+    `;
+
+    $('#adm-drawer-close-btn', dlg)?.addEventListener('click', () => {
+      dlg.returnValue = '';
+      dlg.close();
+    });
+
+    bindMediaUploadFields(dlg);
+    if (typeof onOpen === 'function') onOpen(dlg);
+    dlg.showModal();
+    return dlg;
+  }
+
+  function mediaFieldHtml(name, labelText, currentVal = '', isVideo = false) {
+    const val = currentVal || '';
+    const presets = isVideo ? PRESET_VIDEOS : PRESET_IMAGES;
+    const thumbHtml = isVideo
+      ? `<div class="adm-media-thumb is-vid" title="${esc(val)}">🎬<span>MP4</span></div>`
+      : `<img src="${esc(val || 'assets/nile-sailing.webp')}" alt="" class="adm-media-thumb">`;
 
     return `
-      <div class="adm-section-head">
-        <div>
-          <h2>حجوزات وطلبات العملاء الأجانب · Foreign Guest Bookings (${enquiries.length})</h2>
-          <p>جميع الحجوزات الواردة من فورم البرامج داخل كل كروز مع البرامج الإضافية (Add-ons) التي اختارها العميل.</p>
+      <div class="adm-media-field">
+        <span class="adm-field-lbl">${esc(labelText)}</span>
+        <div class="adm-media-control-row">
+          ${thumbHtml}
+          <div class="adm-media-inputs">
+            <input type="text" name="${esc(name)}" value="${esc(val)}" placeholder="${isVideo ? 'assets/videos/... أو رابط يوتيوب' : 'assets/... أو رابط صورة'}" class="adm-media-url-input" dir="ltr">
+            <div class="adm-media-tools">
+              <select class="adm-media-preset-select" aria-label="اختيار ملف جاهز">
+                <option value="">-- اختيار سريع من المكتبة --</option>
+                ${presets.map(([lbl, path]) => `<option value="${esc(path)}" ${val === path ? 'selected' : ''}>${esc(lbl)}</option>`).join('')}
+              </select>
+              <label class="adm-upload-btn">
+                <input type="file" accept="${isVideo ? 'video/mp4,video/webm' : 'image/*'}" class="adm-file-upload-input" hidden>
+                <span>⬆ رفع من الجهاز</span>
+              </label>
+            </div>
+          </div>
         </div>
-        <div class="adm-stats-pills">
-          <span class="stat-pill gold">إجمالي الطلبات: ${enquiries.length}</span>
-          <span class="stat-pill green">طلبات جديدة: ${newCount}</span>
+      </div>
+    `;
+  }
+
+  function bindMediaUploadFields(rootEl) {
+    $$('.adm-media-field', rootEl).forEach(wrap => {
+      const urlInput = $('.adm-media-url-input', wrap);
+      const presetSel = $('.adm-media-preset-select', wrap);
+      const fileInp = $('.adm-file-upload-input', wrap);
+      const thumbImg = $('img.adm-media-thumb', wrap);
+
+      const syncThumb = (url) => {
+        if (thumbImg && url) thumbImg.src = url;
+      };
+
+      urlInput?.addEventListener('input', () => syncThumb(urlInput.value.trim()));
+
+      presetSel?.addEventListener('change', () => {
+        if (presetSel.value && urlInput) {
+          urlInput.value = presetSel.value;
+          syncThumb(presetSel.value);
+          showToast('تم تحديد الملف من المكتبة');
+        }
+      });
+
+      fileInp?.addEventListener('change', async () => {
+        const file = fileInp.files?.[0];
+        if (!file) return;
+        try {
+          showToast('جاري رفع الملف...');
+          const uploadedUrl = await uploadMediaFile(file);
+          if (urlInput) urlInput.value = uploadedUrl;
+          syncThumb(uploadedUrl);
+          showToast('تم رفع الملف وحفظ مساره بنجاح');
+        } catch (err) {
+          showToast(err.message || 'تعذر رفع الملف', 'error');
+        }
+      });
+    });
+  }
+
+  // ==================== BOOKINGS TAB ====================
+  function renderBookingsTab(st) {
+    const cur = st.settings?.currencySymbol || '$';
+    const allEnq = st.enquiries || [];
+    const newCount = allEnq.filter(e => e.status === 'New').length;
+    const confirmedCount = allEnq.filter(e => e.status === 'Confirmed').length;
+
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = allEnq.filter(enq => {
+      if (bookingStatusFilter !== 'all' && enq.status !== bookingStatusFilter) return false;
+      if (!q) return true;
+      const hay = `${enq.id} ${enq.clientName} ${enq.clientEmail} ${enq.nationality} ${enq.vesselTitle} ${enq.programTitle}`.toLowerCase();
+      return hay.includes(q);
+    });
+
+    return `
+      <div class="adm-kpi-strip">
+        <div class="adm-kpi-card">
+          <small>إجمالي الحجوزات</small>
+          <strong>${allEnq.length}</strong>
+        </div>
+        <div class="adm-kpi-card is-gold">
+          <small>طلبات جديدة بانتظار الرد</small>
+          <strong>${newCount}</strong>
+        </div>
+        <div class="adm-kpi-card is-green">
+          <small>حجوزات مؤكدة</small>
+          <strong>${confirmedCount}</strong>
+        </div>
+        <div class="adm-kpi-card">
+          <small>إجمالي الفعاليات المضافة</small>
+          <strong>${(st.sightseeingPlaces || []).length + (st.addons || []).length}</strong>
         </div>
       </div>
 
-      ${enquiries.length === 0 ? `<div class="adm-empty">لا توجد حجوزات حتى الآن. جرب فتح أي Cruise واختيار برنامج وتعبئة الفورم.</div>` : `
+      <div class="adm-toolbar">
+        <div class="adm-filter-chips" role="tablist" aria-label="تصفية حالة الحجز">
+          ${[
+            ['all', `الكل (${allEnq.length})`],
+            ['New', `جديد (${newCount})`],
+            ['Confirmed', `مؤكد (${confirmedCount})`],
+            ['Completed', 'مكتمل']
+          ].map(([k, lbl]) => `
+            <button type="button" class="adm-chip ${bookingStatusFilter === k ? 'active' : ''}" data-book-filter="${k}">${lbl}</button>
+          `).join('')}
+        </div>
+        <div class="adm-search-box">
+          <input type="search" id="adm-global-search" value="${esc(searchQuery)}" placeholder="🔍 ابحث باسم العميل، الإيميل، الجنسية، أو الرحلة..." aria-label="بحث في الحجوزات">
+        </div>
+      </div>
+
+      ${!filtered.length ? '<div class="adm-empty">لا توجد حجوزات مطابقة لعوامل التصفية الحالية.</div>' : `
         <div class="adm-bookings-list">
-          ${enquiries.map((eq, idx) => `
-            <article class="adm-booking-card status-${esc((eq.status || 'New').toLowerCase())}">
-              <div class="abk-header">
+          ${filtered.map(enq => `
+            <article class="adm-booking-card status-${esc((enq.status || 'New').toLowerCase())}">
+              <div class="adm-bk-top">
                 <div>
-                  <span class="abk-ref">#${esc(eq.id || ('NT-' + (idx + 1)))}</span>
-                  <span class="abk-date">🗓 ${esc(eq.createdAt || '')}</span>
-                  <span class="abk-nat">🌍 ${esc(eq.nationality || 'International')}</span>
+                  <span class="adm-bk-id">#${esc(enq.id)}</span>
+                  <span class="adm-bk-date">${esc(enq.createdAt)}</span>
+                  <span class="adm-badge-status st-${esc((enq.status || 'New').toLowerCase())}">${esc(enq.status || 'New')}</span>
                 </div>
-                <div class="abk-actions">
-                  <label class="abk-status-label">الحالة:
-                    <select data-eq-status="${idx}">
-                      ${['New', 'Confirmed', 'In Progress', 'Archived'].map(s => `<option value="${s}" ${(eq.status || 'New') === s ? 'selected' : ''}>${s}</option>`).join('')}
-                    </select>
-                  </label>
-                  <button type="button" class="adm-btn-danger-sm" data-eq-delete="${idx}">حذف ✕</button>
-                </div>
-              </div>
-
-              <div class="abk-grid">
-                <div class="abk-col">
-                  <small>العميل الأجنبي (FOREIGN GUEST)</small>
-                  <strong>${esc(eq.clientName)}</strong>
-                  <div>✉ <a href="mailto:${esc(eq.clientEmail)}">${esc(eq.clientEmail)}</a></div>
-                  <div>📞 ${esc(eq.clientPhone)}</div>
-                  <div>🛂 Passport/Visa: ${esc(eq.passportReady || 'Standard')}</div>
-                </div>
-
-                <div class="abk-col">
-                  <small>الكروز والبرنامج المختار (CRUISE & PROGRAM)</small>
-                  <strong style="color:#0d2a3a">${esc(eq.vesselTitle)}</strong>
-                  <div style="color:#a57a47;font-weight:700">◈ ${esc(eq.programTitle)}</div>
-                  <div>🛏 الكابينة: ${esc(eq.cabinName)} ${eq.bedConfig ? `(${esc(eq.bedConfig)})` : ''}</div>
-                  <div>📅 الوصول: ${esc(eq.checkInDate)} (${esc(eq.dateFlexibility || 'Flexible')}) · 👥 ${esc(eq.adults)} Adults${eq.children ? `, ${esc(eq.children)} Children` : ''}</div>
-                </div>
-
-                <div class="abk-col">
-                  <small>البرامج الإضافية والـ ADD-ONS المختارة</small>
-                  ${(eq.selectedAddons && eq.selectedAddons.length) ? `
-                    <ul class="abk-addons-ul">
-                      ${eq.selectedAddons.map(a => `<li>✓ ${esc(a.title)} ${a.price ? `(+${cur}${a.price})` : ''}</li>`).join('')}
-                    </ul>
-                  ` : `<div style="color:#7c8b92">بدون إضافات (البرنامج الأساسي فقط)</div>`}
-                  <div class="abk-total">الإجمالي التقديري: <strong>${typeof eq.estimatedTotal === 'number' ? cur + eq.estimatedTotal.toLocaleString() : esc(eq.estimatedTotal)}</strong></div>
+                <div class="adm-bk-controls">
+                  <select class="adm-status-select" data-enq-status="${esc(enq.id)}" aria-label="تغيير حالة الطلب">
+                    <option value="New" ${enq.status === 'New' ? 'selected' : ''}>New / طلب جديد</option>
+                    <option value="Confirmed" ${enq.status === 'Confirmed' ? 'selected' : ''}>Confirmed / مؤكد</option>
+                    <option value="Completed" ${enq.status === 'Completed' ? 'selected' : ''}>Completed / مكتمل</option>
+                  </select>
+                  <button type="button" class="adm-btn-danger-sm" data-delete-enq="${esc(enq.id)}">حذف</button>
                 </div>
               </div>
 
-              <div class="abk-footer">
-                <span>🥗 نظام غذائي: <strong>${esc(eq.dietary || 'None')}</strong></span>
-                <span>🎉 المناسبة/اللغة: <strong>${esc(eq.occasion || 'Standard')}</strong></span>
-                <span>✈ الاستقبال: <strong>${esc(eq.flightTransfer || 'Standard')}</strong></span>
-                ${eq.notes ? `<div class="abk-notes">💬 ملاحظات العميل: "${esc(eq.notes)}"</div>` : ''}
+              <div class="adm-bk-grid">
+                <div class="adm-bk-col">
+                  <h4>بيانات العميل</h4>
+                  <p><strong>${esc(enq.clientName)}</strong> <small>(${esc(enq.nationality)})</small></p>
+                  <p dir="ltr" style="text-align:right">${esc(enq.clientEmail)} · ${esc(enq.clientPhone)}</p>
+                  <p><small>الجواز:</small> ${esc(enq.passportReady || 'ساري')} · <small>الطعام:</small> ${esc(enq.dietary || 'عادي')}</p>
+                </div>
+                <div class="adm-bk-col">
+                  <h4>البرنامج والتفاصيل</h4>
+                  <p><strong>${esc(enq.vesselTitle)}</strong> — ${esc(enq.programTitle)}</p>
+                  <p>الوصول: <strong>${esc(enq.checkInDate)}</strong> · ${esc(enq.cabinName)} (${enq.adults} بالغ${enq.children ? `, ${enq.children} طفل` : ''})</p>
+                  <p><small>الاستقبال:</small> ${esc(enq.flightTransfer || '—')}</p>
+                </div>
+                <div class="adm-bk-col adm-bk-addons">
+                  <h4>المزارات والإضافات (${(enq.selectedAddons || []).length})</h4>
+                  ${enq.selectedAddons?.length ? `
+                    <ul>${enq.selectedAddons.map(a => `<li>✓ ${esc(a.title)} (${cur}${a.price})</li>`).join('')}</ul>
+                  ` : '<p class="muted">البرنامج القياسي فقط</p>'}
+                  <div class="adm-bk-total">الإجمالي التقديري: <strong>${cur}${(Number(enq.estimatedTotal) || 0).toLocaleString()}</strong></div>
+                </div>
               </div>
+              ${enq.notes ? `<div class="adm-bk-notes">📝 ${esc(enq.notes)}</div>` : ''}
             </article>
           `).join('')}
         </div>
@@ -129,1145 +348,547 @@ window.NileTrailsAdmin = (() => {
     `;
   }
 
-  // ==================== 2. CRUISES, DAHABIYAS & PROGRAMS TAB ====================
-  function renderCruisesAndProgramsTab(st) {
-    const allVessels = [
-      ...(st.cruises || []).map(c => ({ ...c, _listKey: 'cruises' })),
-      ...(st.dahabiyas || []).map(d => ({ ...d, _listKey: 'dahabiyas' }))
-    ];
-    if (!selectedVesselId && allVessels.length) {
-      selectedVesselId = allVessels[0].id || allVessels[0].slug;
-    }
-    const activeVessel = allVessels.find(v => (v.id || v.slug) === selectedVesselId) || allVessels[0];
-
-    // If editing a specific Program inside the selected vessel
-    if (editingProgramContext && activeVessel) {
-      const prog = (activeVessel.programs || []).find(p => p.id === editingProgramContext.programId);
-      if (prog) {
-        return renderProgramEditorModalView(st, activeVessel, prog);
-      }
-    }
-
-    return `
-      <div class="adm-section-head">
-        <div>
-          <h2>إدارة الكروز والدهبيات والبرامج بداخلها · Cruises & Programs</h2>
-          <p>أضف أو عدّل أي Cruise أو Dahabiya، وتحكم في البرامج (Programs) الموجودة بداخل كل كروز، وأسعارها، وتفاصيل الأيام والـ Add-ons.</p>
-        </div>
-        <button type="button" class="adm-btn-primary" id="btn-add-vessel">+ إضافة Cruise / Dahabiya جديد</button>
-      </div>
-
-      <div class="adm-split-workspace">
-        <!-- Left Sidebar: List of Vessels -->
-        <div class="adm-vessel-list">
-          <div class="adm-list-header">اختر الكروز لإدارة برامجه (${allVessels.length})</div>
-          ${allVessels.map(v => {
-            const vid = v.id || v.slug;
-            const isSel = activeVessel && (activeVessel.id || activeVessel.slug) === vid;
-            const progCount = (v.programs || []).length;
-            return `
-              <div class="adm-vessel-item ${isSel ? 'active' : ''}" data-select-vessel="${esc(vid)}">
-                <img src="${esc(v.image)}" alt="">
-                <div class="avi-info">
-                  <strong>${esc(v.title)}</strong>
-                  <small>${esc(v.kind === 'dahabiya' ? 'Dahabiya' : 'Nile Cruise')} · ${esc(v.tier)} · ${v.nights}N</small>
-                  <div class="avi-badges">
-                    <span class="badge-prog">${progCount} Programs</span>
-                    ${v.showOnHome ? `<span class="badge-home">في الرئيسية ✓</span>` : ''}
-                    ${v.enabled === false ? `<span class="badge-off">مخفي</span>` : ''}
-                  </div>
-                </div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-
-        <!-- Right Panel: Vessel Settings + Its Programs -->
-        <div class="adm-vessel-detail">
-          ${activeVessel ? `
-            <div class="adm-card">
-              <div class="adm-card-head">
-                <h3>بيانات الكروز: ${esc(activeVessel.title)}</h3>
-                <div style="display:flex;gap:10px">
-                  <a href="#/${activeVessel.kind === 'dahabiya' ? 'dahabiyas' : 'nile-cruises'}/${esc(activeVessel.slug)}" target="_blank" class="adm-btn-outline-sm">معاينة الصفحة في الموقع ↗</a>
-                  <button type="button" class="adm-btn-danger-sm" data-delete-vessel="${esc(activeVessel.id || activeVessel.slug)}" data-vessel-key="${esc(activeVessel._listKey)}">حذف الكروز</button>
-                </div>
-              </div>
-
-              <form id="form-save-vessel" class="adm-form-grid">
-                <input type="hidden" name="vesselId" value="${esc(activeVessel.id || activeVessel.slug)}">
-                <input type="hidden" name="listKey" value="${esc(activeVessel._listKey)}">
-
-                <label>اسم الكروز / الدهبية (Title)
-                  <input type="text" name="title" value="${esc(activeVessel.title)}" required>
-                </label>
-                <label>الرابط المختصر (URL Slug)
-                  <input type="text" name="slug" value="${esc(activeVessel.slug)}" required>
-                </label>
-                <label>النوع (Type)
-                  <select name="kind">
-                    <option value="cruise" ${activeVessel.kind !== 'dahabiya' ? 'selected' : ''}>Nile Cruise (باخرة كروز)</option>
-                    <option value="dahabiya" ${activeVessel.kind === 'dahabiya' ? 'selected' : ''}>Dahabiya (دهبية شراعية)</option>
-                  </select>
-                </label>
-                <label>المستوى (Tier)
-                  <select name="tier">
-                    ${['Luxury', 'Deluxe', 'Superior', 'Private'].map(t => `<option value="${t}" ${activeVessel.tier === t ? 'selected' : ''}>${t}</option>`).join('')}
-                  </select>
-                </label>
-                <label>عدد الليالي الافتراضي (Nights)
-                  <input type="number" name="nights" value="${Number(activeVessel.nights) || 4}" min="1" max="21">
-                </label>
-                <label>خط السير (Route)
-                  <input type="text" name="route" value="${esc(activeVessel.route)}">
-                </label>
-                <label>وسم مميز (Tag)
-                  <input type="text" name="tag" value="${esc(activeVessel.tag)}">
-                </label>
-                <label>الصورة (Image URL)
-                  <select name="imagePreset" onchange="if(this.value) this.form.image.value=this.value">
-                    <option value="">-- اختر صورة جاهزة أو اكتب الرابط --</option>
-                    ${PRESET_IMAGES.map(([lbl, url]) => `<option value="${url}" ${activeVessel.image === url ? 'selected' : ''}>${lbl}</option>`).join('')}
-                  </select>
-                  <input type="text" name="image" value="${esc(activeVessel.image)}" style="margin-top:6px">
-                </label>
-                <label>فيديو الـ Hero بدون صوت (Autoplay Hero Video)
-                  <select name="videoPreset" onchange="if(this.value) this.form.heroVideo.value=this.value">
-                    <option value="">-- اختر مقطع فيديو جاهز أو ضع رابط يوتيوب --</option>
-                    ${PRESET_VIDEOS.map(([lbl, url]) => `<option value="${url}" ${activeVessel.heroVideo === url ? 'selected' : ''}>${lbl}</option>`).join('')}
-                  </select>
-                  <input type="text" name="heroVideo" value="${esc(activeVessel.heroVideo || 'assets/videos/hero-cruise-1.mp4')}" style="margin-top:6px" placeholder="assets/videos/hero-cruise-1.mp4 أو رابط YouTube">
-                </label>
-                <label class="full-col">وصف مختصر (Subtitle)
-                  <input type="text" name="sub" value="${esc(activeVessel.sub)}">
-                </label>
-                <label class="full-col">مرافق وتجهيزات الكروز (CRUISE FACILITIES — سطر لكل مرفق)
-                  <textarea name="facilities" rows="4">${esc((activeVessel.facilities && activeVessel.facilities.length ? activeVessel.facilities : (CMS.DEFAULT_FACILITIES || [])).join('\n'))}</textarea>
-                </label>
-
-                <div class="full-col adm-toggles-row">
-                  <label class="adm-switch">
-                    <input type="checkbox" name="enabled" ${activeVessel.enabled !== false ? 'checked' : ''}>
-                    <span>مفعّل ويظهر في الموقع (Published)</span>
-                  </label>
-                  <label class="adm-switch">
-                    <input type="checkbox" name="showOnHome" ${activeVessel.showOnHome ? 'checked' : ''}>
-                    <span>يظهر في الصفحة الرئيسية (Show on Homepage)</span>
-                  </label>
-                  <button type="submit" class="adm-btn-gold">حفظ تعديلات الكروز ✓</button>
-                </div>
-              </form>
-            </div>
-
-            <!-- PROGRAMS INSIDE THIS VESSEL -->
-            <div class="adm-card" style="margin-top:24px">
-              <div class="adm-card-head">
-                <div>
-                  <h3>البرامج داخل "${esc(activeVessel.title)}" (${(activeVessel.programs || []).length} Programs)</h3>
-                  <p style="margin:4px 0 0;font-size:13px;color:#647882">كل برنامج له خط سير، تفاصيل أيام، مرافق الكروز، المزارات السياحية بالمرشد، وفورم حجز للعميل الأجنبي.</p>
-                </div>
-                <button type="button" class="adm-btn-primary" id="btn-add-program" data-vessel-id="${esc(activeVessel.id || activeVessel.slug)}" data-list-key="${esc(activeVessel._listKey)}">
-                  + إضافة برنامج جديد داخل هذا الكروز
-                </button>
-              </div>
-
-              <div class="adm-programs-list">
-                ${(activeVessel.programs || []).map((prog, pIdx) => `
-                  <div class="adm-prog-row">
-                    <div class="apr-main">
-                      <div class="apr-badges">
-                        <span class="apr-num">PROGRAM 0${pIdx + 1}</span>
-                        <span class="apr-badge">${esc(prog.tabLabel || prog.badge || 'Standard')}</span>
-                        <span class="apr-price">$${prog.basePrice} / person</span>
-                        ${prog.canBeAddonForOthers ? `<span class="badge-home">متاح كـ Add-on للبرامج التانية ✓</span>` : ''}
-                      </div>
-                      <h4>${esc(prog.title)}</h4>
-                      <p>${esc(prog.duration)} · ${esc(prog.route)}</p>
-                      <small>${(prog.itinerary || []).length} أيام في البرنامج · ${(prog.cabins || []).length} فئات كبائن</small>
-                    </div>
-                    <div class="apr-actions">
-                      <button type="button" class="adm-btn-gold-sm" data-edit-prog="${esc(prog.id)}" data-vessel-id="${esc(activeVessel.id || activeVessel.slug)}">
-                        ✎ تعديل البرنامج والـ Facilities والـ Add-ons
-                      </button>
-                      <button type="button" class="adm-btn-danger-sm" data-delete-prog="${esc(prog.id)}" data-vessel-id="${esc(activeVessel.id || activeVessel.slug)}" data-list-key="${esc(activeVessel._listKey)}">
-                        حذف
-                      </button>
-                    </div>
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-          ` : ''}
-        </div>
-      </div>
-    `;
-  }
-
-  function renderProgramEditorModalView(st, vessel, prog) {
-    const allAddons = st.addons || [];
-    const allowAll = !prog.allowedAddonIds || prog.allowedAddonIds.includes('ALL');
-
-    return `
-      <div class="adm-section-head">
-        <div>
-          <button type="button" class="adm-btn-outline-sm" id="btn-back-to-vessel">← الرجوع إلى ${esc(vessel.title)}</button>
-          <h2 style="margin-top:10px">تعديل البرنامج: ${esc(prog.title)}</h2>
-          <p>تحكم في كل تفاصيل البرنامج، فيديو الـ Hero الصامت، مرافق الكروز (Cruise Facilities)، جدول الأيام، أسعار الكبائن، والـ Add-ons.</p>
-        </div>
-      </div>
-
-      <form id="form-save-program" class="adm-card">
-        <div class="adm-form-grid">
-          <label class="full-col">اسم البرنامج (Program Title) *
-            <input type="text" name="title" value="${esc(prog.title)}" required>
-          </label>
-          <label>عنوان التبويب المختصر (Tab Label — مثل 3 Nights)
-            <input type="text" name="tabLabel" value="${esc(prog.tabLabel || prog.nights + ' Nights')}" placeholder="3 Nights">
-          </label>
-          <label>وصف التبويب المختصر (Tab Route — مثل Aswan → Luxor)
-            <input type="text" name="tabSub" value="${esc(prog.tabSub || prog.route)}" placeholder="Aswan → Luxor">
-          </label>
-          <label>الرابط المختصر للبرنامج (Slug)
-            <input type="text" name="slug" value="${esc(prog.slug)}" required>
-          </label>
-          <label>وسم البرنامج (Badge)
-            <input type="text" name="badge" value="${esc(prog.badge || 'Most Popular')}" placeholder="Most Popular / All-Inclusive VIP">
-          </label>
-          <label>المدة النصية (Duration Label)
-            <input type="text" name="duration" value="${esc(prog.duration)}" placeholder="5 Days / 4 Nights">
-          </label>
-          <label>عدد الليالي (Nights)
-            <input type="number" name="nights" value="${Number(prog.nights) || 4}">
-          </label>
-          <label>خط سير البرنامج (Route)
-            <input type="text" name="route" value="${esc(prog.route)}">
-          </label>
-          <label>أيام الإبحار (Departure Days)
-            <input type="text" name="departureDays" value="${esc(prog.departureDays || 'Every Monday & Saturday')}">
-          </label>
-          <label>السعر الأساسي للفرد بالدولار (Base Price USD)
-            <input type="number" name="basePrice" value="${Number(prog.basePrice) || 890}">
-          </label>
-          <label>فيديو الـ Hero الخاص بالبرنامج (Silent Autoplay Video)
-            <select name="progVideoPreset" onchange="if(this.value) this.form.heroVideo.value=this.value">
-              <option value="">-- اختر مقطع فيديو مجزأ جاهز --</option>
-              ${PRESET_VIDEOS.map(([lbl, url]) => `<option value="${url}" ${prog.heroVideo === url ? 'selected' : ''}>${lbl}</option>`).join('')}
-            </select>
-            <input type="text" name="heroVideo" value="${esc(prog.heroVideo || vessel.heroVideo || 'assets/videos/hero-cruise-1.mp4')}" style="margin-top:6px">
-          </label>
-
-          <label class="full-col">وصف البرنامج (Program Summary)
-            <textarea name="summary" rows="3">${esc(prog.summary)}</textarea>
-          </label>
-
-          <label class="full-col">مرافق وتجهيزات الكروز في هذا البرنامج (CRUISE FACILITIES — سطر لكل مرفق)
-            <textarea name="facilities" rows="5">${esc((prog.facilities && prog.facilities.length ? prog.facilities : (vessel.facilities || CMS.DEFAULT_FACILITIES || [])).join('\n'))}</textarea>
-          </label>
-
-          <label class="full-col">مميزات البرنامج (Highlights — سطر لكل ميزة)
-            <textarea name="highlights" rows="4">${esc((prog.highlights || []).join('\n'))}</textarea>
-          </label>
-
-          <label>ما يشمله البرنامج (Included — سطر لكل عنصر)
-            <textarea name="included" rows="5">${esc((prog.included || []).join('\n'))}</textarea>
-          </label>
-
-          <label>ما لا يشمله البرنامج (Excluded — سطر لكل عنصر)
-            <textarea name="excluded" rows="5">${esc((prog.excluded || []).join('\n'))}</textarea>
-          </label>
-
-          <div class="full-col">
-            <h4 style="margin:12px 0 8px;color:#0d2a3a">جدول الأيام (Day-by-Day Itinerary — صيغة: اليوم | العنوان | الوصف | الوجبات في كل سطر)</h4>
-            <textarea name="itineraryText" rows="6" style="font-family:monospace;font-size:12px">${esc((prog.itinerary || []).map(it => `${it.day} | ${it.title} | ${it.desc} | ${it.meals || 'Breakfast · Lunch · Dinner'}`).join('\n'))}</textarea>
-          </div>
-
-          <div class="full-col">
-            <h4 style="margin:12px 0 8px;color:#0d2a3a">فئات الكبائن وأسعار الترقية (Cabins — صيغة: اسم الكابينة | فرق السعر بالدولار | الوصف)</h4>
-            <textarea name="cabinsText" rows="4" style="font-family:monospace;font-size:12px">${esc((prog.cabins || []).map(c => `${c.name} | ${c.priceDelta} | ${c.desc}`).join('\n'))}</textarea>
-          </div>
-
-          <div class="full-col adm-addon-config-box">
-            <h4>خيارات الـ Add-ons والبرامج الإضافية لهذا البرنامج</h4>
-            <label class="adm-switch" style="margin-bottom:14px">
-              <input type="checkbox" name="canBeAddonForOthers" ${prog.canBeAddonForOthers ? 'checked' : ''}>
-              <span><strong>إتاحة هذا البرنامج نفسه كـ Add-on يظهر للعملاء داخل البرامج التانية!</strong> (Cross-Program Add-on)</span>
-            </label>
-
-            <label class="adm-switch" style="margin-bottom:14px">
-              <input type="checkbox" name="allowAllAddons" id="chk-allow-all-addons" ${allowAll ? 'checked' : ''}>
-              <span>إظهار جميع الـ Add-ons والبرامج الملحقة المفعّلة للعميل في فورم الحجز</span>
-            </label>
-
-            <div id="specific-addons-list" style="${allowAll ? 'opacity:.55' : ''}">
-              <small style="display:block;margin-bottom:8px">أو حدد الـ Add-ons المسموحة في هذا البرنامج:</small>
-              <div class="adm-checkbox-grid">
-                ${allAddons.map(ad => `
-                  <label class="adm-chk-item">
-                    <input type="checkbox" name="allowedAddonIds" value="${esc(ad.id)}" ${allowAll || (prog.allowedAddonIds || []).includes(ad.id) ? 'checked' : ''}>
-                    <span>${esc(ad.title)} (+$${ad.price})</span>
-                  </label>
-                `).join('')}
-              </div>
-            </div>
-          </div>
-
-          <div class="full-col" style="display:flex;gap:12px;justify-content:flex-end;margin-top:16px">
-            <button type="button" class="adm-btn-outline" id="btn-cancel-prog">إلغاء</button>
-            <button type="submit" class="adm-btn-gold">حفظ البرنامج بالكامل ✓</button>
-          </div>
-        </div>
-      </form>
-    `;
-  }
-
-  // ==================== 3. ADD-ONS & EXTENSIONS TAB ====================
-  function renderAddonsTab(st) {
-    const addons = st.addons || [];
-    return `
-      <div class="adm-section-head">
-        <div>
-          <h2>إدارة الـ Add-ons والبرامج الإضافية الملحقة (${addons.length})</h2>
-          <p>تحكم في البرامج الإضافية (مثل برنامج القاهرة والأهرامات، الغردقة والبحر الأحمر، أبو سمبل، البالون الطائر، استقبال VIP) التي يختارها العميل الأجنبي كـ Add-on داخل أي برنامج كروز.</p>
-        </div>
-        <button type="button" class="adm-btn-primary" id="btn-add-addon">+ إضافة Add-on أو برنامج ملحق جديد</button>
-      </div>
-
-      <div class="adm-addons-grid">
-        ${addons.map((ad, idx) => `
-          <form class="adm-card adm-addon-form" data-addon-idx="${idx}">
-            <div class="adm-card-head">
-              <span class="prog-pill-gold">${esc(ad.type === 'program-extension' ? 'برنامج ملحق (Program Extension)' : ad.type === 'vip' ? 'خدمة VIP' : 'مزار / رحلة إضافية')}</span>
-              <button type="button" class="adm-btn-danger-sm" data-delete-addon="${idx}">حذف ✕</button>
-            </div>
-            <div class="adm-form-grid">
-              <label class="full-col">اسم الـ Add-on / البرنامج الإضافي
-                <input type="text" name="title" value="${esc(ad.title)}" required>
-              </label>
-              <label>النوع (Type)
-                <select name="type">
-                  <option value="program-extension" ${ad.type === 'program-extension' ? 'selected' : ''}>Multi-Day Program Extension (برنامج كامل لبرامج أخرى)</option>
-                  <option value="excursion" ${ad.type === 'excursion' ? 'selected' : ''}>Iconic Excursion (مزار أو رحلة إضافية)</option>
-                  <option value="vip" ${ad.type === 'vip' ? 'selected' : ''}>VIP Service (خدمة كبار الزوار / المطار)</option>
-                </select>
-              </label>
-              <label>التصنيف الظاهر (Category Label)
-                <input type="text" name="category" value="${esc(ad.category)}">
-              </label>
-              <label>المدة الزمنية (Duration Badge)
-                <input type="text" name="duration" value="${esc(ad.duration)}" placeholder="+3 Days / 2 Nights">
-              </label>
-              <label>السعر بالدولار (Price USD)
-                <input type="number" name="price" value="${Number(ad.price) || 0}">
-              </label>
-              <label>وحدة السعر (Price Unit)
-                <select name="priceUnit">
-                  <option value="per person" ${ad.priceUnit !== 'per booking' ? 'selected' : ''}>per person (لكل فرد)</option>
-                  <option value="per booking" ${ad.priceUnit === 'per booking' ? 'selected' : ''}>per booking (للحجز بالكامل)</option>
-                </select>
-              </label>
-              <label>الصورة (Image)
-                <select name="image">
-                  ${PRESET_IMAGES.map(([lbl, url]) => `<option value="${url}" ${ad.image === url ? 'selected' : ''}>${lbl}</option>`).join('')}
-                </select>
-              </label>
-              <label class="full-col">الوصف (Summary)
-                <textarea name="summary" rows="2">${esc(ad.summary)}</textarea>
-              </label>
-              <div class="full-col adm-toggles-row">
-                <label class="adm-switch">
-                  <input type="checkbox" name="enabled" ${ad.enabled !== false ? 'checked' : ''}>
-                  <span>مفعّل في فورم البرامج</span>
-                </label>
-                <label class="adm-switch">
-                  <input type="checkbox" name="showOnHome" ${ad.showOnHome ? 'checked' : ''}>
-                  <span>يظهر في الصفحة الرئيسية</span>
-                </label>
-                <button type="submit" class="adm-btn-gold-sm">حفظ التعديل ✓</button>
-              </div>
-            </div>
-          </form>
-        `).join('')}
-      </div>
-    `;
-  }
-
-  // ==================== 4. CUSTOM PAGES & PAGE BUILDER TAB ====================
-  function renderPagesBuilderTab(st) {
-    const pages = st.customPages || [];
-    if (!editingPageId && pages.length) {
-      editingPageId = pages[0].id;
-    }
-    const activePage = pages.find(p => p.id === editingPageId) || pages[0];
+  // ==================== CRUISES & DAHABIYAS + STRUCTURED PROGRAM BUILDER ====================
+  function renderVesselsTab(st) {
     const allVessels = [...(st.cruises || []), ...(st.dahabiyas || [])];
+    if (!selectedVesselId || !allVessels.some(v => v.id === selectedVesselId)) {
+      selectedVesselId = allVessels[0]?.id;
+    }
+    const v = allVessels.find(x => x.id === selectedVesselId);
+    const cur = st.settings?.currencySymbol || '$';
 
     return `
       <div class="adm-section-head">
         <div>
-          <h2>إدارة الصفحات وبناء صفحات جديدة · Custom Page Builder</h2>
-          <p>أضف أي عدد من الصفحات الجديدة، وحدد هل تظهر في الصفحة الرئيسية أو القائمة العلوية أو الفوتر، وصمم الأقسام التي تظهر بداخلها بسهولة.</p>
+          <h2>إدارة المراكب والذهبيات والبرامج</h2>
+          <p>عدّل بيانات أي مركب، فعّل ظهوره على الموقع، وأدر البرامج السياحية بجدول الأيام والكبائن التفاعلي (بدون أكواد معقدة).</p>
         </div>
-        <button type="button" class="adm-btn-primary" id="btn-create-new-page">+ إنشاء صفحة جديدة</button>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button type="button" class="adm-btn-primary" id="btn-add-cruise">+ إضافة نايل كروز</button>
+          <button type="button" class="adm-btn-gold" id="btn-add-dahabiya">+ إضافة ذهبية</button>
+        </div>
       </div>
 
       <div class="adm-split-workspace">
-        <!-- Left Sidebar: Pages List -->
-        <div class="adm-vessel-list">
-          <div class="adm-list-header">صفحات الموقع المخصصة (${pages.length})</div>
-          ${pages.map(pg => `
-            <div class="adm-vessel-item ${activePage && activePage.id === pg.id ? 'active' : ''}" data-select-page="${esc(pg.id)}">
-              <div class="avi-info">
-                <strong>${esc(pg.title)}</strong>
-                <small>#/page/${esc(pg.slug)}</small>
-                <div class="avi-badges">
-                  ${pg.showOnHome ? `<span class="badge-home">في الرئيسية ✓</span>` : ''}
-                  ${pg.showInNavbar ? `<span class="badge-prog">في القائمة ✓</span>` : ''}
-                  ${pg.enabled === false ? `<span class="badge-off">مخفي</span>` : ''}
+        <aside class="adm-vessel-list">
+          <div class="adm-list-header">الأسطول (${allVessels.length})</div>
+          ${allVessels.map(item => `
+            <div class="adm-vessel-item ${item.id === v?.id ? 'active' : ''}" data-select-vessel="${esc(item.id)}">
+              <img src="${esc(item.image || 'assets/nile-cruise.webp')}" alt="">
+              <div style="min-width:0;flex:1">
+                <strong>${esc(item.title)}</strong>
+                <span>${item.kind === 'dahabiya' ? 'ذهبية' : 'كروز'} · ${esc(item.tier)} · ${(item.programs || []).length} برامج</span>
+                <div class="adm-item-badges">
+                  <em class="pill ${item.enabled !== false ? 'on' : 'off'}">${item.enabled !== false ? 'مفعّل' : 'مخفي'}</em>
+                  ${item.showOnHome ? '<em class="pill home">بالرئيسية</em>' : ''}
                 </div>
               </div>
             </div>
           `).join('')}
-        </div>
+        </aside>
 
-        <!-- Right Workspace: Page Settings & Content Blocks Builder -->
-        <div class="adm-vessel-detail">
-          ${activePage ? `
-            <div class="adm-card">
-              <div class="adm-card-head">
-                <h3>إعدادات الصفحة ومكان ظهورها: ${esc(activePage.title)}</h3>
-                <div style="display:flex;gap:10px">
-                  <a href="#/page/${esc(activePage.slug)}" target="_blank" class="adm-btn-outline-sm">معاينة الصفحة الآن ↗</a>
-                  <button type="button" class="adm-btn-danger-sm" data-delete-page="${esc(activePage.id)}">حذف الصفحة</button>
-                </div>
-              </div>
-
-              <form id="form-save-custom-page" class="adm-form-grid">
-                <input type="hidden" name="pageId" value="${esc(activePage.id)}">
-                <label>عنوان الصفحة (Page Title) *
-                  <input type="text" name="title" value="${esc(activePage.title)}" required>
-                </label>
-                <label>رابط الصفحة (URL Slug: #/page/...) *
-                  <input type="text" name="slug" value="${esc(activePage.slug)}" required>
-                </label>
-                <label>عنوان فرعي علوي (Eyebrow)
-                  <input type="text" name="eyebrow" value="${esc(activePage.eyebrow || 'SPECIAL COLLECTION')}">
-                </label>
-                <label>صورة الغلاف (Hero Image)
-                  <select name="heroImage">
-                    ${PRESET_IMAGES.map(([lbl, url]) => `<option value="${url}" ${activePage.heroImage === url ? 'selected' : ''}>${lbl}</option>`).join('')}
-                  </select>
-                </label>
-                <label class="full-col">وصف الغلاف (Hero Subtitle)
-                  <textarea name="subtitle" rows="2">${esc(activePage.subtitle)}</textarea>
-                </label>
-
-                <div class="full-col adm-addon-config-box">
-                  <h4>أين تريد أن تظهر هذه الصفحة؟ (أماكن الظهور في الموقع)</h4>
-                  <div class="adm-toggles-row" style="margin-top:10px">
-                    <label class="adm-switch">
-                      <input type="checkbox" name="enabled" ${activePage.enabled !== false ? 'checked' : ''}>
-                      <span>تفعيل الصفحة (Published)</span>
-                    </label>
-                    <label class="adm-switch">
-                      <input type="checkbox" name="showOnHome" ${activePage.showOnHome ? 'checked' : ''}>
-                      <span><strong>إظهار في الصفحة الرئيسية (Show on Homepage)</strong></span>
-                    </label>
-                    <label class="adm-switch">
-                      <input type="checkbox" name="showInNavbar" ${activePage.showInNavbar ? 'checked' : ''}>
-                      <span>إظهار في القائمة العلوية (Main Navbar)</span>
-                    </label>
-                    <label class="adm-switch">
-                      <input type="checkbox" name="showInFooter" ${activePage.showInFooter ? 'checked' : ''}>
-                      <span>إظهار في الفوتر (Footer)</span>
-                    </label>
-                  </div>
-                  <div class="two-fields" style="margin-top:14px">
-                    <label>موقع الرابط في القائمة العلوية (Navbar Location)
-                      <select name="navParent">
-                        <option value="top" ${activePage.navParent === 'top' ? 'selected' : ''}>رابط رئيسي مستقل في الهيدر (Top-Level Header Link)</option>
-                        <option value="nile-cruises" ${activePage.navParent === 'nile-cruises' ? 'selected' : ''}>داخل قائمة Nile Cruises</option>
-                        <option value="dahabiyas" ${activePage.navParent === 'dahabiyas' ? 'selected' : ''}>داخل قائمة Dahabiyas</option>
-                        <option value="journeys" ${activePage.navParent === 'journeys' ? 'selected' : ''}>داخل قائمة Journeys</option>
-                        <option value="beyond-the-nile" ${activePage.navParent === 'beyond-the-nile' ? 'selected' : ''}>داخل قائمة Beyond the Nile</option>
-                        <option value="about" ${activePage.navParent === 'about' ? 'selected' : ''}>داخل قائمة About</option>
-                      </select>
-                    </label>
-                    <label>وسم البطاقة في الصفحة الرئيسية (Home Card Tag)
-                      <input type="text" name="homeCardTag" value="${esc(activePage.homeCardTag || 'Special Experience')}">
-                    </label>
-                  </div>
-                </div>
-
-                <div class="full-col" style="display:flex;justify-content:flex-end">
-                  <button type="submit" class="adm-btn-gold">حفظ إعدادات الصفحة ✓</button>
-                </div>
-              </form>
-            </div>
-
-            <!-- PAGE CONTENT BLOCKS BUILDER -->
-            <div class="adm-card" style="margin-top:24px">
+        <div class="adm-vessel-editor">
+          ${v ? `
+            <form id="adm-vessel-form" data-vessel-id="${esc(v.id)}" class="adm-card">
               <div class="adm-card-head">
                 <div>
-                  <h3>محتوى الصفحة: ماذا يظهر داخل "${esc(activePage.title)}"؟ (${(activePage.blocks || []).length} أقسام)</h3>
-                  <p style="margin:4px 0 0;font-size:13px;color:#647882">أضف أقسام نصية، أو شبكة برامج وكروز، أو عروض Add-ons، أو أسئلة شائعة، أو فورم حجز مباشر داخل هذه الصفحة.</p>
+                  <h3>${esc(v.title)}</h3>
+                  <small dir="ltr" style="color:#6c7d87">#/${v.kind === 'dahabiya' ? 'dahabiyas' : 'nile-cruises'}/${esc(v.slug)}</small>
                 </div>
-                <div class="adm-add-block-bar">
-                  <select id="sel-new-block-type">
-                    <option value="editorial">📝 قسم نصي تعريفي + زر (Editorial Section)</option>
-                    <option value="programs-showcase">🚢 عرض كروز وبرامج مختارة (Cruises & Programs Grid)</option>
-                    <option value="addons-showcase">➕ عرض جميع الـ Add-ons والبرامج الإضافية</option>
-                    <option value="highlights">✨ 3 نقاط مميزة مرقمة (Numbered Highlights)</option>
-                    <option value="faq">❓ أسئلة شائعة وأجوبة (FAQ Accordion)</option>
-                    <option value="booking-form">📋 فورم حجز العميل الأجنبي + Add-ons مباشر</option>
-                  </select>
-                  <button type="button" class="adm-btn-primary" id="btn-add-page-block" data-page-id="${esc(activePage.id)}">+ إضافة القسم للصفحة</button>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <a href="#/${v.kind === 'dahabiya' ? 'dahabiyas' : 'nile-cruises'}/${esc(v.slug)}" target="_blank" class="adm-btn-outline-sm">معاينة الصفحة ↗</a>
+                  <button type="submit" class="adm-btn-gold">حفظ التعديلات</button>
                 </div>
               </div>
 
-              <div class="adm-blocks-list">
-                ${(activePage.blocks || []).map((blk, bIdx) => `
-                  <form class="adm-block-card" data-save-block="${bIdx}" data-page-id="${esc(activePage.id)}">
-                    <div class="abc-head">
-                      <strong>القسم 0${bIdx + 1}: ${esc(blk.type.toUpperCase())}</strong>
-                      <div style="display:flex;gap:8px">
-                        <button type="button" class="adm-btn-outline-sm" data-move-block="${bIdx}" data-dir="-1" data-page-id="${esc(activePage.id)}">⬆ للأعلى</button>
-                        <button type="button" class="adm-btn-outline-sm" data-move-block="${bIdx}" data-dir="1" data-page-id="${esc(activePage.id)}">⬇ للأسفل</button>
-                        <button type="button" class="adm-btn-danger-sm" data-del-block="${bIdx}" data-page-id="${esc(activePage.id)}">حذف القسم ✕</button>
-                      </div>
-                    </div>
+              <div class="adm-form-grid">
+                <label>اسم المركب / الذهبية *
+                  <input type="text" name="title" value="${esc(v.title)}" required>
+                </label>
+                <label>الفئة (Tier)
+                  <select name="tier">
+                    <option value="Luxury" ${v.tier === 'Luxury' ? 'selected' : ''}>Luxury / فاخرة</option>
+                    <option value="Deluxe" ${v.tier === 'Deluxe' ? 'selected' : ''}>Deluxe / ديلوكس</option>
+                    <option value="Superior" ${v.tier === 'Superior' ? 'selected' : ''}>Superior / متميزة</option>
+                    <option value="Private" ${v.tier === 'Private' ? 'selected' : ''}>Private / خاصة</option>
+                  </select>
+                </label>
+                <label>خط الإبحار الرئيسي
+                  <input type="text" name="route" value="${esc(v.route)}">
+                </label>
+                <label>عدد الليالي المعروض
+                  <input type="number" name="nights" value="${v.nights || 4}" min="1">
+                </label>
+                <div class="full-col">
+                  ${mediaFieldHtml('image', 'صورة المركب / الذهبية', v.image, false)}
+                </div>
+                <div class="full-col">
+                  ${mediaFieldHtml('heroVideo', 'فيديو البداية الصامت (Hero Autoplay)', v.heroVideo || '', true)}
+                </div>
+                <label class="full-col">وصف مختصر تحت العنوان
+                  <textarea name="sub" rows="2">${esc(v.sub)}</textarea>
+                </label>
+              </div>
 
-                    ${blk.type === 'editorial' ? `
-                      <div class="adm-form-grid">
-                        <label>عنوان علوي (Eyebrow)<input type="text" name="eyebrow" value="${esc(blk.eyebrow || '')}"></label>
-                        <label>العنوان الرئيسي (Heading)<input type="text" name="heading" value="${esc(blk.heading || '')}"></label>
-                        <label class="full-col">النص التفصيلي (Body Text)<textarea name="body" rows="3">${esc(blk.body || '')}</textarea></label>
-                        <label>نص الزر (CTA Button Text)<input type="text" name="ctaText" value="${esc(blk.ctaText || '')}"></label>
-                        <label>رابط الزر (CTA URL)<input type="text" name="ctaUrl" value="${esc(blk.ctaUrl || 'nile-cruises')}"></label>
+              <div class="adm-toggles-row">
+                <label class="adm-switch">
+                  <input type="checkbox" name="enabled" ${v.enabled !== false ? 'checked' : ''}>
+                  <span>مفعّل ويظهر للعملاء</span>
+                </label>
+                <label class="adm-switch">
+                  <input type="checkbox" name="showOnHome" ${v.showOnHome ? 'checked' : ''}>
+                  <span>إظهار في القسم المميز بالصفحة الرئيسية</span>
+                </label>
+                <button type="button" class="adm-btn-danger-sm" data-delete-vessel="${esc(v.id)}">حذف المركب</button>
+              </div>
+            </form>
+
+            <div class="adm-card" style="margin-top:20px">
+              <div class="adm-card-head">
+                <div>
+                  <h3>البرامج داخل "${esc(v.title)}" (${(v.programs || []).length})</h3>
+                  <p class="adm-card-sub">كل برنامج يحتوي على جدول أيام، كبائن، أسعار موسمية، مزارات وإضافات</p>
+                </div>
+                <button type="button" class="adm-btn-primary" id="btn-add-program" data-vessel-id="${esc(v.id)}">+ إضافة برنامج جديد</button>
+              </div>
+              <div class="adm-programs-list">
+                ${(v.programs || []).map(pr => `
+                  <div class="adm-prog-row">
+                    <div>
+                      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <h4>${esc(pr.title)}</h4>
+                        ${pr.tabLabel ? `<span class="pill home">${esc(pr.tabLabel)}</span>` : ''}
+                        ${pr.canBeAddonForOthers ? '<span class="pill on">يظهر كإضافة للبرامج</span>' : ''}
                       </div>
-                    ` : blk.type === 'programs-showcase' ? `
-                      <div class="adm-form-grid">
-                        <label>عنوان علوي (Eyebrow)<input type="text" name="eyebrow" value="${esc(blk.eyebrow || 'FEATURED PROGRAMS')}"></label>
-                        <label>العنوان الرئيسي (Heading)<input type="text" name="heading" value="${esc(blk.heading || '')}"></label>
-                        <label class="full-col">وصف فرعي<input type="text" name="sub" value="${esc(blk.sub || '')}"></label>
-                        <div class="full-col">
-                          <small style="display:block;margin-bottom:6px;font-weight:700">اختر الكروز والدهبيات التي تظهر في هذا القسم:</small>
-                          <div class="adm-checkbox-grid">
-                            ${allVessels.map(v => `
-                              <label class="adm-chk-item">
-                                <input type="checkbox" name="cruiseSlugs" value="${esc(v.slug)}" ${(blk.cruiseSlugs || []).includes(v.slug) ? 'checked' : ''}>
-                                <span>${esc(v.title)} (${v.nights}N)</span>
-                              </label>
-                            `).join('')}
-                          </div>
-                        </div>
-                      </div>
-                    ` : blk.type === 'highlights' ? `
-                      <div class="adm-form-grid">
-                        <label>عنوان علوي<input type="text" name="eyebrow" value="${esc(blk.eyebrow || 'HIGHLIGHTS')}"></label>
-                        <label>العنوان الرئيسي<input type="text" name="heading" value="${esc(blk.heading || '')}"></label>
-                        <label class="full-col">النقاط المميزة (كل سطر بصيغة: الرقم | العنوان | الوصف)
-                          <textarea name="itemsText" rows="4">${esc((blk.items || []).map(i => `${i.num} | ${i.title} | ${i.text}`).join('\n'))}</textarea>
-                        </label>
-                      </div>
-                    ` : blk.type === 'faq' ? `
-                      <div class="adm-form-grid">
-                        <label>عنوان علوي<input type="text" name="eyebrow" value="${esc(blk.eyebrow || 'FAQ')}"></label>
-                        <label>العنوان الرئيسي<input type="text" name="heading" value="${esc(blk.heading || 'Good to know.')}"></label>
-                        <label class="full-col">الأسئلة والأجوبة (كل سطر بصيغة: السؤال | الإجابة)
-                          <textarea name="faqText" rows="4">${esc((blk.items || []).map(i => `${i.q} | ${i.a}`).join('\n'))}</textarea>
-                        </label>
-                      </div>
-                    ` : `
-                      <p style="margin:8px 0;color:#5a707a">هذا القسم يعرض <strong>${blk.type === 'addons-showcase' ? 'شبكة جميع الـ Add-ons والبرامج الإضافية' : 'نموذج حجز البرامج والـ Add-ons الكامل للعميل الأجنبي'}</strong> تلقائياً.</p>
-                    `}
-                    <div style="display:flex;justify-content:flex-end;margin-top:10px">
-                      <button type="submit" class="adm-btn-gold-sm">حفظ القسم ✓</button>
+                      <p>${esc(pr.duration)} · ${esc(pr.route)} · يبدأ من <strong>${cur}${pr.basePrice}</strong> / فرد</p>
+                      <small>${(pr.itinerary || []).length} أيام · ${(pr.cabins || []).length} أنواع كبائن</small>
                     </div>
-                  </form>
+                    <div class="adm-prog-actions">
+                      <button type="button" class="adm-btn-gold-sm" data-open-prog-drawer="${esc(v.id)}::${esc(pr.id)}">تعديل البرنامج</button>
+                      <button type="button" class="adm-btn-danger-sm" data-delete-prog="${esc(v.id)}::${esc(pr.id)}">حذف</button>
+                    </div>
+                  </div>
                 `).join('')}
               </div>
             </div>
-          ` : `<div class="adm-empty">اضغط "+ إنشاء صفحة جديدة" لإضافة أول صفحة مخصصة.</div>`}
+          ` : '<div class="adm-empty">اختر مركباً من القائمة لتعديله.</div>'}
         </div>
       </div>
     `;
   }
 
-  // ==================== 5. HOMEPAGE & LAYOUT CONTROLLER TAB ====================
-  function renderHomepageControllerTab(st) {
-    const hc = st.homeConfig || {};
-    const sections = hc.sections || [];
+  function openProgramDrawer(st, vesselId, programId, containerSelector) {
+    const allVessels = [...(st.cruises || []), ...(st.dahabiyas || [])];
+    const v = allVessels.find(x => x.id === vesselId);
+    const pr = v?.programs?.find(p => p.id === programId);
+    if (!v || !pr) return;
 
-    return `
-      <div class="adm-section-head">
-        <div>
-          <h2>التحكم الكامل في الصفحة الرئيسية وأقسامها · Homepage Controller</h2>
-          <p>تحكم في نصوص وصورة الهيرو الرئيسي، وحدد أي الأقسام تظهر أو تختفي في الصفحة الرئيسية، ورتبها بالأعلى أو الأسفل.</p>
-        </div>
-        <a href="#/" target="_blank" class="adm-btn-outline">معاينة الصفحة الرئيسية ↗</a>
-      </div>
+    const allFacilities = CMS.DEFAULT_FACILITIES || [];
+    const curFacilities = Array.isArray(pr.facilities) && pr.facilities.length ? pr.facilities : allFacilities;
+    const allAddonChoices = [
+      ...(st.addons || []).map(a => ({ id: a.id, title: a.title, tag: 'إضافة عامة' })),
+      ...allVessels.flatMap(xv => (xv.programs || []).filter(xp => xp.id !== pr.id && xp.canBeAddonForOthers).map(xp => ({
+        id: xp.id, title: `${xp.title} (${xv.title})`, tag: 'برنامج كروز'
+      })))
+    ];
+    const allowedAll = !pr.allowedAddonIds || pr.allowedAddonIds.includes('ALL');
 
-      <div class="adm-split-workspace" style="grid-template-columns:1fr 1fr">
-        <form id="form-save-home-hero" class="adm-card">
-          <h3>بانر الصفحة الرئيسية (Homepage Hero)</h3>
-          <div class="adm-form-grid">
-            <label class="full-col">العنوان العلوي الصغير (Eyebrow)
-              <input type="text" name="heroEyebrow" value="${esc(hc.heroEyebrow || '')}">
-            </label>
-            <label class="full-col">العنوان الرئيسي الكبير (يدعم HTML مثل &lt;em&gt;)
-              <input type="text" name="heroTitle" value="${esc(hc.heroTitle || '')}">
-            </label>
-            <label class="full-col">الوصف الفرعي (Hero Subtitle)
-              <textarea name="heroSub" rows="3">${esc(hc.heroSub || '')}</textarea>
-            </label>
-            <label>نص الزر الأول
-              <input type="text" name="primaryBtnText" value="${esc(hc.primaryBtnText || 'Explore the Nile')}">
-            </label>
-            <label>رابط الزر الأول
-              <input type="text" name="primaryBtnUrl" value="${esc(hc.primaryBtnUrl || 'nile-cruises')}">
-            </label>
-            <label>نص الزر الثاني
-              <input type="text" name="secondaryBtnText" value="${esc(hc.secondaryBtnText || 'Make it personal')}">
-            </label>
-            <label>رابط الزر الثاني
-              <input type="text" name="secondaryBtnUrl" value="${esc(hc.secondaryBtnUrl || 'plan-your-journey')}">
-            </label>
-            <label class="full-col">صورة خلفية الهيرو
-              <select name="heroImage">
-                ${PRESET_IMAGES.map(([lbl, url]) => `<option value="${url}" ${hc.heroImage === url ? 'selected' : ''}>${lbl}</option>`).join('')}
-              </select>
-            </label>
-            <div class="full-col" style="display:flex;justify-content:flex-end">
-              <button type="submit" class="adm-btn-gold">حفظ تعديلات الهيرو ✓</button>
+    // Mutable working copies for structured repeaters inside Drawer
+    let draftItinerary = JSON.parse(JSON.stringify(pr.itinerary || []));
+    let draftCabins = JSON.parse(JSON.stringify(pr.cabins || []));
+
+    const summer = pr.pricingSeasons?.summer || {};
+    const winter = pr.pricingSeasons?.winter || {};
+    const base = Number(pr.basePrice) || 750;
+
+    const renderDayRows = (listEl) => {
+      listEl.innerHTML = draftItinerary.map((d, i) => `
+        <div class="adm-repeater-card" data-day-idx="${i}">
+          <div class="adm-repeater-head">
+            <strong>اليوم ${i + 1}: ${esc(d.day || `Day ${i + 1}`)}</strong>
+            <div style="display:flex;gap:6px">
+              <button type="button" class="adm-btn-outline-sm" data-day-move="${i}:-1">↑</button>
+              <button type="button" class="adm-btn-outline-sm" data-day-move="${i}:1">↓</button>
+              <button type="button" class="adm-btn-danger-sm" data-day-del="${i}">حذف</button>
             </div>
           </div>
-        </form>
+          <div class="adm-repeater-grid">
+            <label>رقم اليوم <input type="text" data-day-field="day" value="${esc(d.day || '')}" placeholder="Day 1"></label>
+            <label>المحطة (Route Stop) <input type="text" data-day-field="stop" value="${esc(d.stop || '')}" placeholder="Luxor"></label>
+            <label class="full-col">عنوان اليوم <input type="text" data-day-field="title" value="${esc(d.title || '')}"></label>
+            <label class="full-col">تفاصيل الزيارات <textarea rows="2" data-day-field="desc">${esc(d.desc || '')}</textarea></label>
+            <label class="full-col">الوجبات المشمولة <input type="text" data-day-field="meals" value="${esc(d.meals || '')}" placeholder="Lunch & Dinner on board"></label>
+          </div>
+        </div>
+      `).join('') || '<div class="adm-empty">لا توجد أيام مضافة بعد. اضغط "+ إضافة يوم" للبدء.</div>';
+    };
 
-        <div class="adm-card">
-          <h3>ترتيب وإظهار/إخفاء أقسام الصفحة الرئيسية</h3>
-          <p style="font-size:13px;color:#647882;margin-bottom:16px">رتّب الأقسام أو أخفِ أي قسم لا تريده في الصفحة الرئيسية بضغطة زر:</p>
-          <div class="adm-sections-sorter">
-            ${sections.map((sec, idx) => `
-              <div class="adm-sec-item ${sec.enabled !== false ? 'on' : 'off'}">
-                <label class="adm-switch">
-                  <input type="checkbox" data-toggle-homesec="${idx}" ${sec.enabled !== false ? 'checked' : ''}>
-                  <strong>0${idx + 1}. ${esc(sec.label)}</strong>
-                </label>
-                <div class="asi-btns">
-                  <button type="button" class="adm-btn-outline-sm" data-move-homesec="${idx}" data-dir="-1">⬆</button>
-                  <button type="button" class="adm-btn-outline-sm" data-move-homesec="${idx}" data-dir="1">⬇</button>
-                </div>
-              </div>
+    const renderCabinRows = (listEl) => {
+      listEl.innerHTML = draftCabins.map((c, i) => `
+        <div class="adm-cabin-row" data-cabin-idx="${i}">
+          <input type="text" data-cabin-field="name" value="${esc(c.name || '')}" placeholder="اسم الكابينة (مثال: Double Cabin)">
+          <input type="number" data-cabin-field="priceDelta" value="${Number(c.priceDelta) || 0}" placeholder="فرق السعر (+/-)">
+          <input type="text" data-cabin-field="desc" value="${esc(c.desc || '')}" placeholder="وصف مختصر">
+          <button type="button" class="adm-btn-danger-sm" data-cabin-del="${i}">✕</button>
+        </div>
+      `).join('');
+    };
+
+    const bodyHtml = `
+      <form id="adm-prog-drawer-form" class="adm-drawer-form">
+        <div class="adm-drawer-section">
+          <h4>1. المعلومات الأساسية والتبويب</h4>
+          <div class="adm-form-grid">
+            <label class="full-col">عنوان البرنامج *
+              <input type="text" name="title" value="${esc(pr.title)}" required autofocus>
+            </label>
+            <label>اسم التبويب القصير (Tab Label)
+              <input type="text" name="tabLabel" value="${esc(pr.tabLabel || (pr.nights + ' Nights'))}" placeholder="3 Nights">
+            </label>
+            <label>السطر الفرعي للتبويب (Tab Sub)
+              <input type="text" name="tabSub" value="${esc(pr.tabSub || pr.route || '')}" placeholder="Aswan → Luxor">
+            </label>
+            <label>المدة المعروضة
+              <input type="text" name="duration" value="${esc(pr.duration)}" placeholder="4 Days / 3 Nights">
+            </label>
+            <label>خط الرحلة
+              <input type="text" name="route" value="${esc(pr.route)}">
+            </label>
+            <label>عدد الليالي
+              <input type="number" name="nights" value="${pr.nights || 3}" min="1">
+            </label>
+            <label>السعر الأساسي المرجعي (USD)
+              <input type="number" name="basePrice" id="drawer-base-price" value="${base}" min="50">
+            </label>
+            <div class="full-col">
+              ${mediaFieldHtml('heroVideo', 'فيديو الهيدر للبرنامج (Autoplay MP4)', pr.heroVideo || '', true)}
+            </div>
+            <label class="full-col">ملخص البرنامج
+              <textarea name="summary" rows="2">${esc(pr.summary)}</textarea>
+            </label>
+          </div>
+          <label class="adm-switch adm-highlight-switch" style="margin-top:12px">
+            <input type="checkbox" name="canBeAddonForOthers" ${pr.canBeAddonForOthers ? 'checked' : ''}>
+            <span>السماح بظهور هذا البرنامج كـ Add-on إضافي داخل البرامج الأخرى</span>
+          </label>
+        </div>
+
+        <div class="adm-drawer-section">
+          <div class="adm-drawer-sec-head">
+            <h4>2. الأسعار الموسمية (Seasonal Rates)</h4>
+            <button type="button" class="adm-btn-outline-sm" id="btn-auto-seasons">توليد تلقائي من السعر الأساسي</button>
+          </div>
+          <div class="adm-season-grid">
+            <div class="adm-season-box">
+              <strong>الصيف (May – Aug)</strong>
+              <label>Triple Cabin <input type="number" name="sTriple" value="${summer.triple || Math.round(base * 0.96)}"></label>
+              <label>Double Cabin <input type="number" name="sDouble" value="${summer.double || base}"></label>
+              <label>Single Cabin <input type="number" name="sSingle" value="${summer.single || Math.round(base * 1.65)}"></label>
+            </div>
+            <div class="adm-season-box">
+              <strong>الذروة (Sep – Apr)</strong>
+              <label>Triple Cabin <input type="number" name="wTriple" value="${winter.triple || Math.round(base * 1.15)}"></label>
+              <label>Double Cabin <input type="number" name="wDouble" value="${winter.double || Math.round(base * 1.18)}"></label>
+              <label>Single Cabin <input type="number" name="wSingle" value="${winter.single || Math.round(base * 1.9)}"></label>
+            </div>
+          </div>
+        </div>
+
+        <div class="adm-drawer-section">
+          <div class="adm-drawer-sec-head">
+            <h4>3. جدول الأيام التفاعلي (Itinerary Builder)</h4>
+            <button type="button" class="adm-btn-primary-sm" id="btn-drawer-add-day">+ إضافة يوم</button>
+          </div>
+          <div id="drawer-itinerary-list" class="adm-repeater-list"></div>
+        </div>
+
+        <div class="adm-drawer-section">
+          <div class="adm-drawer-sec-head">
+            <h4>4. فئات الكبائن وفرق السعر (Cabins)</h4>
+            <button type="button" class="adm-btn-primary-sm" id="btn-drawer-add-cabin">+ إضافة كابينة</button>
+          </div>
+          <div id="drawer-cabins-list" class="adm-cabins-builder"></div>
+        </div>
+
+        <div class="adm-drawer-section">
+          <h4>5. مرافق المركب (Cruise Facilities)</h4>
+          <div class="adm-checkbox-grid">
+            ${allFacilities.map(f => `
+              <label class="adm-chk-item">
+                <input type="checkbox" name="facilities" value="${esc(f)}" ${curFacilities.includes(f) ? 'checked' : ''}>
+                <span>${esc(f)}</span>
+              </label>
             `).join('')}
           </div>
         </div>
-      </div>
-    `;
-  }
 
-  // ==================== 6. SETTINGS & BACKUP TAB ====================
-  function renderSettingsTab(st) {
-    const s = st.settings || {};
-    return `
-      <div class="adm-section-head">
-        <div>
-          <h2>إعدادات الموقع العامة والنسخ الاحتياطي · Site Settings</h2>
-          <p>تحكم في اسم العلامة التجارية، العملة، بيانات التواصل، واستعادة الإعدادات الافتراضية.</p>
+        <div class="adm-drawer-section">
+          <h4>6. الإضافات والبرامج المتاحة داخل فورم الحجز</h4>
+          <label class="adm-switch" style="margin-bottom:10px">
+            <input type="checkbox" name="allowAllAddons" ${allowedAll ? 'checked' : ''}>
+            <span>إظهار كافة الإضافات والبرامج المفعلة تلقائياً (مستحسن)</span>
+          </label>
+          <div class="adm-checkbox-grid">
+            ${allAddonChoices.map(ch => `
+              <label class="adm-chk-item">
+                <input type="checkbox" name="allowedAddonId" value="${esc(ch.id)}" ${allowedAll || pr.allowedAddonIds?.includes(ch.id) ? 'checked' : ''}>
+                <span><strong>${esc(ch.title)}</strong> <small>(${esc(ch.tag)})</small></span>
+              </label>
+            `).join('')}
+          </div>
         </div>
-      </div>
 
-      <div class="adm-split-workspace" style="grid-template-columns:1fr 1fr">
-        <form id="form-save-settings" class="adm-card">
-          <h3>بيانات الهوية والتواصل</h3>
+        <div class="adm-drawer-section">
+          <h4>7. ما يشمله وما لا يشمله البرنامج</h4>
           <div class="adm-form-grid">
-            <label>اسم الموقع (Brand Name)
-              <input type="text" name="brandName" value="${esc(s.brandName || 'NileTrails')}">
+            <label>يشمل السعر (سطر لكل بند)
+              <textarea name="includedText" rows="4">${esc((pr.included || []).join('\n'))}</textarea>
             </label>
-            <label>الشعار النصي (Tagline)
-              <input type="text" name="tagline" value="${esc(s.tagline || '')}">
+            <label>لا يشمل السعر (سطر لكل بند)
+              <textarea name="excludedText" rows="4">${esc((pr.excluded || []).join('\n'))}</textarea>
             </label>
-            <label>رمز العملة (Currency Symbol)
-              <select name="currencySymbol">
-                <option value="$" ${s.currencySymbol === '$' ? 'selected' : ''}>$ (USD)</option>
-                <option value="€" ${s.currencySymbol === '€' ? 'selected' : ''}>€ (EUR)</option>
-                <option value="£" ${s.currencySymbol === '£' ? 'selected' : ''}>£ (GBP)</option>
-              </select>
-            </label>
-            <label>البريد الإلكتروني للتواصل
-              <input type="email" name="contactEmail" value="${esc(s.contactEmail || '')}">
-            </label>
-            <label>رقم الهاتف / واتساب
-              <input type="text" name="contactPhone" value="${esc(s.contactPhone || '')}">
-            </label>
-            <label class="full-col adm-switch" style="margin-top:12px">
-              <input type="checkbox" name="showAdminBar" ${s.showAdminBar !== false ? 'checked' : ''}>
-              <span>إظهار زر الوصول السريع للوحة التحكم أسفل الموقع</span>
-            </label>
-            <div class="full-col" style="display:flex;justify-content:flex-end">
-              <button type="submit" class="adm-btn-gold">حفظ الإعدادات ✓</button>
-            </div>
-          </div>
-        </form>
-
-        <div class="adm-card">
-          <h3>النسخ الاحتياطي واستعادة الضبط</h3>
-          <p style="font-size:13px;color:#647882">جميع التعديلات والصفحات والبرامج والحجوزات محفوظة تلقائياً على السيرفر (<code>data/cms.json</code>) وفي المتصفح.</p>
-          <div style="display:flex;flex-direction:column;gap:14px;margin-top:20px">
-            <button type="button" class="adm-btn-outline" id="btn-export-cms">⬇ تحميل نسخة احتياطية كاملة (Export JSON)</button>
-            <button type="button" class="adm-btn-danger-sm" id="btn-reset-cms" style="padding:14px">↺ استعادة البيانات الافتراضية للموقع (Reset to Default)</button>
           </div>
         </div>
-      </div>
+      </form>
     `;
+
+    const footerHtml = `
+      <button type="button" class="adm-btn-outline" id="btn-drawer-cancel">إلغاء</button>
+      <button type="submit" form="adm-prog-drawer-form" class="adm-btn-gold">حفظ وتطبيق على البرنامج ✓</button>
+    `;
+
+    const dlg = openSlideDrawer({
+      title: `تعديل برنامج: ${pr.title}`,
+      subtitle: `تابع لمركب: ${v.title}`,
+      bodyHtml,
+      footerHtml,
+      onOpen: (dialogEl) => {
+        const dayContainer = $('#drawer-itinerary-list', dialogEl);
+        const cabinContainer = $('#drawer-cabins-list', dialogEl);
+        renderDayRows(dayContainer);
+        renderCabinRows(cabinContainer);
+
+        const syncDayDraftFromDom = () => {
+          $$('.adm-repeater-card', dayContainer).forEach((card, i) => {
+            if (!draftItinerary[i]) return;
+            draftItinerary[i].day = $('[data-day-field="day"]', card)?.value || `Day ${i + 1}`;
+            draftItinerary[i].stop = $('[data-day-field="stop"]', card)?.value || '';
+            draftItinerary[i].title = $('[data-day-field="title"]', card)?.value || '';
+            draftItinerary[i].desc = $('[data-day-field="desc"]', card)?.value || '';
+            draftItinerary[i].meals = $('[data-day-field="meals"]', card)?.value || '';
+          });
+        };
+
+        const syncCabinDraftFromDom = () => {
+          $$('.adm-cabin-row', cabinContainer).forEach((row, i) => {
+            if (!draftCabins[i]) return;
+            draftCabins[i].name = $('[data-cabin-field="name"]', row)?.value || 'Cabin';
+            draftCabins[i].priceDelta = Number($('[data-cabin-field="priceDelta"]', row)?.value) || 0;
+            draftCabins[i].desc = $('[data-cabin-field="desc"]', row)?.value || '';
+            draftCabins[i].id = slugify(draftCabins[i].name);
+          });
+        };
+
+        $('#btn-drawer-add-day', dialogEl)?.addEventListener('click', () => {
+          syncDayDraftFromDom();
+          const n = draftItinerary.length + 1;
+          draftItinerary.push({ day: `Day ${n}`, stop: 'Nile Sailing', title: `Day ${n} — Guided Sightseeing & Sailing`, desc: 'Visit ancient landmarks with your licensed Egyptologist and enjoy full-board sailing.', meals: 'Breakfast, Lunch & Dinner' });
+          renderDayRows(dayContainer);
+        });
+
+        dayContainer.addEventListener('click', (e) => {
+          const delBtn = e.target.closest('[data-day-del]');
+          if (delBtn) {
+            syncDayDraftFromDom();
+            draftItinerary.splice(Number(delBtn.dataset.dayDel), 1);
+            renderDayRows(dayContainer);
+            return;
+          }
+          const mvBtn = e.target.closest('[data-day-move]');
+          if (mvBtn) {
+            syncDayDraftFromDom();
+            const [idxStr, dirStr] = mvBtn.dataset.dayMove.split(':');
+            const idx = Number(idxStr), dir = Number(dirStr);
+            const target = idx + dir;
+            if (target >= 0 && target < draftItinerary.length) {
+              [draftItinerary[idx], draftItinerary[target]] = [draftItinerary[target], draftItinerary[idx]];
+              renderDayRows(dayContainer);
+            }
+          }
+        });
+
+        $('#btn-drawer-add-cabin', dialogEl)?.addEventListener('click', () => {
+          syncCabinDraftFromDom();
+          draftCabins.push({ id: 'cabin-' + Date.now(), name: 'Deluxe Suite', priceDelta: 220, desc: 'Upper deck panoramic suite' });
+          renderCabinRows(cabinContainer);
+        });
+
+        cabinContainer.addEventListener('click', (e) => {
+          const delBtn = e.target.closest('[data-cabin-del]');
+          if (delBtn) {
+            syncCabinDraftFromDom();
+            draftCabins.splice(Number(delBtn.dataset.cabinDel), 1);
+            renderCabinRows(cabinContainer);
+          }
+        });
+
+        $('#btn-auto-seasons', dialogEl)?.addEventListener('click', () => {
+          const b = Number($('#drawer-base-price', dialogEl)?.value) || 750;
+          $('[name="sTriple"]', dialogEl).value = Math.round(b * 0.96);
+          $('[name="sDouble"]', dialogEl).value = b;
+          $('[name="sSingle"]', dialogEl).value = Math.round(b * 1.65);
+          $('[name="wTriple"]', dialogEl).value = Math.round(b * 1.15);
+          $('[name="wDouble"]', dialogEl).value = Math.round(b * 1.18);
+          $('[name="wSingle"]', dialogEl).value = Math.round(b * 1.9);
+          showToast('تم حساب أسعار الصيف والذروة تلقائياً');
+        });
+
+        $('#btn-drawer-cancel', dialogEl)?.addEventListener('click', () => dialogEl.close());
+
+        $('#adm-prog-drawer-form', dialogEl)?.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          syncDayDraftFromDom();
+          syncCabinDraftFromDom();
+          const fd = new FormData(e.target);
+
+          pr.title = fd.get('title');
+          pr.slug = slugify(pr.title);
+          pr.tabLabel = fd.get('tabLabel');
+          pr.tabSub = fd.get('tabSub');
+          pr.duration = fd.get('duration');
+          pr.route = fd.get('route');
+          pr.nights = Number(fd.get('nights')) || 3;
+          pr.basePrice = Number(fd.get('basePrice')) || 750;
+          pr.heroVideo = fd.get('heroVideo');
+          pr.summary = fd.get('summary');
+          pr.canBeAddonForOthers = fd.get('canBeAddonForOthers') === 'on';
+          pr.pricingSeasons = {
+            summer: {
+              triple: Number(fd.get('sTriple')) || pr.basePrice,
+              double: Number(fd.get('sDouble')) || pr.basePrice,
+              single: Number(fd.get('sSingle')) || Math.round(pr.basePrice * 1.65)
+            },
+            winter: {
+              triple: Number(fd.get('wTriple')) || Math.round(pr.basePrice * 1.15),
+              double: Number(fd.get('wDouble')) || Math.round(pr.basePrice * 1.18),
+              single: Number(fd.get('wSingle')) || Math.round(pr.basePrice * 1.9)
+            }
+          };
+          pr.itinerary = draftItinerary;
+          pr.routeStops = draftItinerary.map((it, idx) => ({ stop: it.stop || `Stop ${idx + 1}`, day: it.day || `Day ${idx + 1}` }));
+          pr.cabins = draftCabins;
+          pr.facilities = fd.getAll('facilities');
+          pr.allowedAddonIds = fd.get('allowAllAddons') === 'on' ? ['ALL'] : fd.getAll('allowedAddonId');
+          pr.included = String(fd.get('includedText') || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+          pr.excluded = String(fd.get('excludedText') || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+
+          dialogEl.close();
+          await saveAndRefresh(containerSelector, `تم تحديث برنامج "${pr.title}" بنجاح`);
+        });
+      }
+    });
+    return dlg;
   }
 
-  // ==================== 7. SIGHTSEEING & NUBIAN AND THE NILE TAB ====================
+  // ==================== SIGHTSEEING PLACES (COMPACT + SEARCH + DRAWER) ====================
   function renderSightseeingTab(st) {
+    const cur = st.settings?.currencySymbol || '$';
     const places = st.sightseeingPlaces || [];
+    const locations = [...new Set(places.map(p => p.location).filter(Boolean))];
+    const q = searchQuery.trim().toLowerCase();
+
+    const filtered = places.map((pl, idx) => ({ pl, idx })).filter(({ pl }) => {
+      if (sightLocationFilter !== 'all' && pl.location !== sightLocationFilter) return false;
+      if (!q) return true;
+      return `${pl.title} ${pl.location} ${pl.highlights}`.toLowerCase().includes(q);
+    });
+
     return `
       <div class="adm-section-head">
         <div>
-          <h2>إدارة المزارات السياحية وقسم Nubian and the Nile (${places.length} مزار)</h2>
-          <p>تحكم في الـ 15 مزاراً سياحياً (Main places to visit during a Nile cruise) التي تظهر داخل كل برنامج كروز تحت قسم <strong>Sightseeing with Tour Guide</strong> وفي صفحة <strong>Beyond the Nile → Nubian and the Nile</strong>.</p>
+          <h2>إدارة المزارات السياحية (${places.length} مزار)</h2>
+          <p>تظهر تلقائياً في قسم "Nubian and the Nile" وداخل كل برنامج باسم "Sightseeing with Tour Guide". استخدم التعديل السريع أو افتح بطاقة المزار للتفاصيل.</p>
         </div>
-        <div style="display:flex;gap:10px">
-          <a href="#/beyond-the-nile/nubian-and-the-nile" class="adm-btn-outline-sm" target="_blank">معاينة صفحة Nubian & the Nile ↗</a>
-          <button type="button" class="adm-btn-primary" id="btn-add-sight">+ إضافة مزار سياحي جديد</button>
+        <button type="button" class="adm-btn-gold" id="btn-add-sightseeing">+ إضافة مزار جديد</button>
+      </div>
+
+      <div class="adm-toolbar">
+        <div class="adm-filter-chips">
+          <button type="button" class="adm-chip ${sightLocationFilter === 'all' ? 'active' : ''}" data-sight-loc-filter="all">الكل (${places.length})</button>
+          ${locations.map(loc => `
+            <button type="button" class="adm-chip ${sightLocationFilter === loc ? 'active' : ''}" data-sight-loc-filter="${esc(loc)}">${esc(loc)}</button>
+          `).join('')}
+        </div>
+        <div class="adm-search-box">
+          <input type="search" id="adm-global-search" value="${esc(searchQuery)}" placeholder="🔍 ابحث عن معبد أو مزار..." aria-label="بحث في المزارات">
         </div>
       </div>
 
-      <div class="adm-addons-grid">
-        ${places.map((pl, idx) => `
-          <form class="adm-card adm-sight-form" data-sight-idx="${idx}">
-            <div class="adm-card-head">
-              <span class="prog-pill-gold">📍 ${esc(pl.location)}</span>
-              <div style="display:flex;gap:8px;align-items:center">
-                <a href="#/beyond-the-nile/nubian-and-the-nile/${esc(pl.slug)}" class="adm-btn-outline-sm" target="_blank">معاينة الصفحة ↗</a>
-                <button type="button" class="adm-btn-danger-sm" data-delete-sight="${idx}">حذف ✕</button>
+      <div class="adm-compact-grid">
+        ${filtered.map(({ pl, idx }) => `
+          <article class="adm-compact-card ${pl.enabled === false ? 'is-off' : ''}">
+            <div class="adm-cc-head">
+              <img src="${esc(pl.image || 'assets/egypt-temple.webp')}" alt="" class="adm-cc-thumb">
+              <div class="adm-cc-info">
+                <span class="pill home">${esc(pl.location)}</span>
+                <h4>${esc(pl.title)}</h4>
+                <small>⏱ ${esc(pl.duration || '3 Hours')} · ${esc((pl.shortDesc || pl.highlights || '').slice(0, 75))}...</small>
               </div>
             </div>
-            <div class="adm-form-grid">
-              <label>اسم المزار / الرحلة (Place to Visit) *
-                <input type="text" name="title" value="${esc(pl.title)}" required>
+            <div class="adm-cc-quickbar">
+              <label class="adm-inline-price">
+                <span>السعر (${cur}):</span>
+                <input type="number" value="${Number(pl.price) || 0}" data-quick-sight-price="${idx}" min="0" aria-label="سعر ${esc(pl.title)}">
               </label>
-              <label>المنطقة / الموقع (Location) *
-                <input type="text" name="location" value="${esc(pl.location)}" placeholder="Luxor – East Bank / Aswan / Esna..." required>
+              <label class="adm-switch-mini">
+                <input type="checkbox" data-quick-sight-toggle="${idx}" ${pl.enabled !== false ? 'checked' : ''}>
+                <span>${pl.enabled !== false ? 'مفعّل' : 'مخفي'}</span>
               </label>
-              <label>السعر مع المرشد السياحي بالدولار (Price USD)
-                <input type="number" name="price" value="${Number(pl.price) || 55}">
-              </label>
-              <label>مدة الزيارة (Duration)
-                <input type="text" name="duration" value="${esc(pl.duration || '2.5 Hours')}">
-              </label>
-              <label class="full-col">رابط صورة المزار (Image URL)
-                <input type="text" name="image" value="${esc(pl.image)}">
-              </label>
-              <label class="full-col">تعريف صغير / Highlights (يظهر في الكارت والجدول)
-                <input type="text" name="highlights" value="${esc(pl.highlights)}">
-              </label>
-              <label class="full-col">الشرح الكامل للمزار والرحلة (يظهر عند الضغط على See More)
-                <textarea name="fullOverview" rows="3">${esc(pl.fullOverview || pl.shortDesc || pl.highlights)}</textarea>
-              </label>
-              <div class="full-col adm-toggles-row">
-                <label class="adm-switch">
-                  <input type="checkbox" name="enabled" ${pl.enabled !== false ? 'checked' : ''}>
-                  <span>مفعّل ويظهر في البرامج وفي قسم Nubian and the Nile</span>
-                </label>
-                <button type="submit" class="adm-btn-gold-sm">حفظ تعديل المزار ✓</button>
+              <div class="adm-cc-btns">
+                <button type="button" class="adm-btn-primary-sm" data-open-sight-drawer="${idx}">تعديل</button>
+                <button type="button" class="adm-btn-danger-sm" data-delete-sight="${idx}">حذف</button>
               </div>
             </div>
-          </form>
+          </article>
         `).join('')}
       </div>
     `;
   }
 
-  function renderAdmin(containerSelector = '#app') {
-    const container = $(containerSelector);
-    if (!container) return;
-    const st = CMS.getState();
-    const newBookings = (st.enquiries || []).filter(e => e.status === 'New').length;
-
-    container.innerHTML = `
-      <div class="admin-shell" dir="rtl">
-        <header class="admin-topbar">
-          <div class="atb-brand">
-            <span class="atb-badge">NILETRAILS CMS</span>
-            <h1>لوحة التحكم الكاملة للموقع · Admin Control Panel</h1>
+  function openSightDrawer(st, idx, containerSelector) {
+    const pl = st.sightseeingPlaces?.[idx];
+    if (!pl) return;
+    openSlideDrawer({
+      title: `تعديل مزار: ${pl.title}`,
+      subtitle: `الموقع: ${pl.location}`,
+      bodyHtml: `
+        <form id="adm-sight-drawer-form" class="adm-drawer-form">
+          <div class="adm-form-grid">
+            <label>اسم المزار * <input type="text" name="title" value="${esc(pl.title)}" required autofocus></label>
+            <label>المنطقة (Location) <input type="text" name="location" value="${esc(pl.location)}" required></label>
+            <label>السعر (USD) <input type="number" name="price" value="${Number(pl.price) || 0}" min="0" required></label>
+            <label>المدة <input type="text" name="duration" value="${esc(pl.duration || '3 Hours')}"></label>
+            <div class="full-col">${mediaFieldHtml('image', 'صورة المزار', pl.image || 'assets/egypt-temple.webp', false)}</div>
+            <label class="full-col">أبرز المعالم (تظهر أسفل البطاقة) <textarea name="highlights" rows="2">${esc(pl.highlights || pl.shortDesc || '')}</textarea></label>
+            <label class="full-col">الوصف الكامل في صفحة See More <textarea name="fullOverview" rows="4">${esc(pl.fullOverview || '')}</textarea></label>
           </div>
-          <div class="atb-actions">
-            <a href="#/beyond-the-nile/nubian-and-the-nile" class="adm-btn-outline-sm" style="color:#fff;border-color:rgba(255,255,255,.3)">🏛 صفحة Nubian & the Nile</a>
-            <a href="#/" class="adm-btn-gold-sm">🌐 عرض الموقع الحي (View Live Site) ↗</a>
-          </div>
-        </header>
-
-        <nav class="admin-tabs-nav" aria-label="أقسام لوحة التحكم">
-          <button type="button" class="adm-tab-btn ${activeTab === 'bookings' ? 'active' : ''}" data-adm-tab="bookings">
-            📋 حجوزات العملاء (${(st.enquiries || []).length}) ${newBookings ? `<span class="adm-notif">${newBookings}</span>` : ''}
-          </button>
-          <button type="button" class="adm-tab-btn ${activeTab === 'cruises' ? 'active' : ''}" data-adm-tab="cruises">
-            🚢 الكروز والدهبيات والبرامج (${(st.cruises || []).length + (st.dahabiyas || []).length})
-          </button>
-          <button type="button" class="adm-tab-btn ${activeTab === 'sightseeing' ? 'active' : ''}" data-adm-tab="sightseeing">
-            🏛 المزارات و Nubian & Nile (${(st.sightseeingPlaces || []).length})
-          </button>
-          <button type="button" class="adm-tab-btn ${activeTab === 'addons' ? 'active' : ''}" data-adm-tab="addons">
-            ➕ الـ Add-ons والبرامج الملحقة (${(st.addons || []).length})
-          </button>
-          <button type="button" class="adm-tab-btn ${activeTab === 'pages' ? 'active' : ''}" data-adm-tab="pages">
-            📄 إدارة وبناء الصفحات (${(st.customPages || []).length})
-          </button>
-          <button type="button" class="adm-tab-btn ${activeTab === 'homepage' ? 'active' : ''}" data-adm-tab="homepage">
-            🏠 التحكم في الصفحة الرئيسية
-          </button>
-          <button type="button" class="adm-tab-btn ${activeTab === 'settings' ? 'active' : ''}" data-adm-tab="settings">
-            ⚙ الإعدادات والنسخ الاحتياطي
-          </button>
-        </nav>
-
-        <main class="admin-main-body">
-          ${activeTab === 'bookings' ? renderBookingsTab(st) : ''}
-          ${activeTab === 'cruises' ? renderCruisesAndProgramsTab(st) : ''}
-          ${activeTab === 'sightseeing' ? renderSightseeingTab(st) : ''}
-          ${activeTab === 'addons' ? renderAddonsTab(st) : ''}
-          ${activeTab === 'pages' ? renderPagesBuilderTab(st) : ''}
-          ${activeTab === 'homepage' ? renderHomepageControllerTab(st) : ''}
-          ${activeTab === 'settings' ? renderSettingsTab(st) : ''}
-        </main>
-      </div>
-    `;
-
-    bindAdminEvents(containerSelector);
-  }
-
-  function bindAdminEvents(containerSelector) {
-    const st = CMS.getState();
-
-    // Tab switching
-    $$('[data-adm-tab]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        activeTab = btn.dataset.admTab;
-        editingProgramContext = null;
-        renderAdmin(containerSelector);
-      });
-    });
-
-    // 1. Bookings events
-    $$('[data-eq-status]').forEach(sel => {
-      sel.addEventListener('change', async () => {
-        const idx = Number(sel.dataset.eqStatus);
-        if (st.enquiries[idx]) {
-          st.enquiries[idx].status = sel.value;
-          await CMS.save();
-          showToast('تم تحديث حالة الحجز');
-          renderAdmin(containerSelector);
-        }
-      });
-    });
-
-    $$('[data-eq-delete]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const idx = Number(btn.dataset.eqDelete);
-        st.enquiries.splice(idx, 1);
-        await CMS.save();
-        showToast('تم حذف الطلب');
-        renderAdmin(containerSelector);
-      });
-    });
-
-    // 2. Cruises & Programs events
-    $$('[data-select-vessel]').forEach(item => {
-      item.addEventListener('click', () => {
-        selectedVesselId = item.dataset.selectVessel;
-        editingProgramContext = null;
-        renderAdmin(containerSelector);
-      });
-    });
-
-    $('#btn-add-vessel')?.addEventListener('click', async () => {
-      const newSlug = 'custom-nile-cruise-' + Math.floor(100 + Math.random() * 900);
-      const newVessel = {
-        id: 'vessel-' + Date.now(),
-        slug: newSlug,
-        title: 'New Luxury Nile Cruise',
-        tier: 'Luxury',
-        route: 'Luxor → Aswan',
-        nights: 4,
-        image: 'assets/nile-cruise.webp',
-        tag: 'Bespoke Voyage',
-        kind: 'cruise',
-        sub: 'Tailored Nile sailing with curated programs and private guided excursions.',
-        enabled: true,
-        showOnHome: true,
-        programs: [
-          {
-            id: newSlug + '-prog-1',
-            slug: 'classic-program',
-            title: '4-Night Classic Luxor to Aswan Program',
-            badge: 'Featured Program',
-            duration: '5 Days / 4 Nights',
-            nights: 4,
-            route: 'Luxor → Edfu → Kom Ombo → Aswan',
-            departureDays: 'Every Monday & Saturday',
-            basePrice: 950,
-            summary: 'Full-board luxury cruise program with private Egyptologist guide and temple visits.',
-            canBeAddonForOthers: false,
-            allowedAddonIds: ['ALL'],
-            highlights: ['Private airport transfers', 'Full-board gourmet dining', 'Guided temple excursions'],
-            included: ['4 nights accommodation onboard', 'All temple entry tickets', 'Private Egyptologist guide'],
-            excluded: ['International flights', 'Personal expenses'],
-            cabins: [
-              { id: 'deluxe', name: 'Deluxe River-View Cabin', priceDelta: 0, desc: 'Panoramic window' },
-              { id: 'suite', name: 'Royal Suite', priceDelta: 400, desc: 'Private balcony & lounge' }
-            ],
-            itinerary: [
-              { day: 'Day 01', title: 'Embarkation in Luxor & Karnak Temple', desc: 'Transfer to vessel, welcome lunch and afternoon tour of Karnak and Luxor Temples.' },
-              { day: 'Day 02', title: 'Valley of the Kings & Sailing to Edfu', desc: 'Explore the West Bank royal tombs before sailing south.' },
-              { day: 'Day 03', title: 'Edfu & Kom Ombo Temples', desc: 'Visit Horus Temple at Edfu and sunset at Kom Ombo.' },
-              { day: 'Day 04', title: 'Aswan, Philae Island & Felucca Sail', desc: 'Visit Philae Temple and sail by felucca around Elephantine Island.' },
-              { day: 'Day 05', title: 'Disembarkation in Aswan', desc: 'Breakfast onboard and private transfer to airport or your chosen Add-on Program.' }
-            ]
-          }
-        ]
-      };
-      st.cruises.unshift(newVessel);
-      selectedVesselId = newVessel.id;
-      await CMS.save();
-      showToast('تم إضافة كروز جديد مع برنامج افتراضي');
-      renderAdmin(containerSelector);
-    });
-
-    $('#form-save-vessel')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
-      const vid = fd.get('vesselId');
-      const oldKey = fd.get('listKey');
-      const newKind = fd.get('kind');
-      const newKey = newKind === 'dahabiya' ? 'dahabiyas' : 'cruises';
-
-      let list = st[oldKey] || [];
-      let idx = list.findIndex(v => (v.id || v.slug) === vid);
-      if (idx === -1) return;
-
-      const updated = {
-        ...list[idx],
-        title: fd.get('title'),
-        slug: slugify(fd.get('slug')),
-        kind: newKind,
-        tier: fd.get('tier'),
-        nights: Number(fd.get('nights')) || 4,
-        route: fd.get('route'),
-        tag: fd.get('tag'),
-        image: fd.get('image') || 'assets/nile-cruise.webp',
-        heroVideo: fd.get('heroVideo') || 'assets/videos/hero-cruise-1.mp4',
-        facilities: String(fd.get('facilities') || '').split('\n').map(s => s.trim()).filter(Boolean),
-        sub: fd.get('sub'),
-        enabled: fd.get('enabled') === 'on',
-        showOnHome: fd.get('showOnHome') === 'on'
-      };
-
-      if (oldKey !== newKey) {
-        list.splice(idx, 1);
-        st[newKey].unshift(updated);
-      } else {
-        list[idx] = updated;
-      }
-
-      await CMS.save();
-      showToast('تم حفظ بيانات الكروز بنجاح');
-      renderAdmin(containerSelector);
-    });
-
-    $$('[data-delete-vessel]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const vid = btn.dataset.deleteVessel;
-        const key = btn.dataset.vesselKey;
-        st[key] = (st[key] || []).filter(v => (v.id || v.slug) !== vid);
-        selectedVesselId = null;
-        await CMS.save();
-        showToast('تم حذف الكروز');
-        renderAdmin(containerSelector);
-      });
-    });
-
-    // Add Program inside Vessel
-    $('#btn-add-program')?.addEventListener('click', async (e) => {
-      const vid = e.currentTarget.dataset.vesselId;
-      const key = e.currentTarget.dataset.listKey;
-      const vessel = (st[key] || []).find(v => (v.id || v.slug) === vid);
-      if (!vessel) return;
-      if (!Array.isArray(vessel.programs)) vessel.programs = [];
-
-      const newProg = {
-        id: 'prog-' + Date.now(),
-        slug: 'custom-program-' + (vessel.programs.length + 1),
-        title: `New ${vessel.nights}-Night Tailored Sailing Program`,
-        badge: 'New Program',
-        duration: `${vessel.nights + 1} Days / ${vessel.nights} Nights`,
-        nights: vessel.nights,
-        route: vessel.route,
-        departureDays: 'Flexible Departures',
-        basePrice: 890,
-        summary: 'Complete sailing program with private guided excursions, temple entry tickets and airport transfers.',
-        canBeAddonForOthers: false,
-        allowedAddonIds: ['ALL'],
-        highlights: ['Private airport transfers', 'Full-board dining', 'Certified Egyptologist guide'],
-        included: ['Full-board cabin accommodation', 'All listed temple visits & tickets', 'Private transfers'],
-        excluded: ['International flights', 'Gratuities'],
-        cabins: [
-          { id: 'deluxe', name: 'Deluxe River-View Cabin', priceDelta: 0, desc: 'Panoramic window' },
-          { id: 'suite', name: 'Royal Suite', priceDelta: 380, desc: 'Spacious suite' }
-        ],
-        itinerary: [
-          { day: 'Day 01', title: 'Embarkation & Welcome Temple Visit', desc: 'Airport pickup, embarkation and guided afternoon temple visit.' },
-          { day: 'Day 02', title: 'Sailing the Nile & Ancient Monuments', desc: 'Guided visit to the royal tombs and scenic river sailing.' },
-          { day: 'Day 03', title: 'Riverside Temples & Disembarkation', desc: 'Final temple visit and private transfer to your next destination.' }
-        ]
-      };
-
-      vessel.programs.push(newProg);
-      editingProgramContext = { vesselId: vid, programId: newProg.id };
-      await CMS.save();
-      showToast('تم إنشاء برنامج جديد — يمكنك تعديل تفاصيله الآن');
-      renderAdmin(containerSelector);
-    });
-
-    $$('[data-edit-prog]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        editingProgramContext = {
-          vesselId: btn.dataset.vesselId,
-          programId: btn.dataset.editProg
-        };
-        renderAdmin(containerSelector);
-      });
-    });
-
-    $$('[data-delete-prog]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const vid = btn.dataset.vesselId;
-        const pid = btn.dataset.deleteProg;
-        const key = btn.dataset.listKey;
-        const vessel = (st[key] || []).find(v => (v.id || v.slug) === vid);
-        if (vessel && Array.isArray(vessel.programs)) {
-          vessel.programs = vessel.programs.filter(p => p.id !== pid);
-          await CMS.save();
-          showToast('تم حذف البرنامج');
-          renderAdmin(containerSelector);
-        }
-      });
-    });
-
-    $('#btn-back-to-vessel')?.addEventListener('click', () => {
-      editingProgramContext = null;
-      renderAdmin(containerSelector);
-    });
-    $('#btn-cancel-prog')?.addEventListener('click', () => {
-      editingProgramContext = null;
-      renderAdmin(containerSelector);
-    });
-
-    $('#chk-allow-all-addons')?.addEventListener('change', (e) => {
-      const box = $('#specific-addons-list');
-      if (box) box.style.opacity = e.target.checked ? '0.55' : '1';
-    });
-
-    $('#form-save-program')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!editingProgramContext) return;
-      const allVessels = [...(st.cruises || []), ...(st.dahabiyas || [])];
-      const vessel = allVessels.find(v => (v.id || v.slug) === editingProgramContext.vesselId);
-      const prog = (vessel?.programs || []).find(p => p.id === editingProgramContext.programId);
-      if (!prog) return;
-
-      const fd = new FormData(e.target);
-      prog.title = fd.get('title');
-      prog.tabLabel = fd.get('tabLabel') || (fd.get('nights') + ' Nights');
-      prog.tabSub = fd.get('tabSub') || fd.get('route');
-      prog.slug = slugify(fd.get('slug'));
-      prog.badge = fd.get('badge');
-      prog.duration = fd.get('duration');
-      prog.nights = Number(fd.get('nights')) || 4;
-      prog.route = fd.get('route');
-      prog.departureDays = fd.get('departureDays');
-      prog.basePrice = Number(fd.get('basePrice')) || 890;
-      prog.heroVideo = fd.get('heroVideo') || vessel.heroVideo || 'assets/videos/hero-cruise-1.mp4';
-      prog.summary = fd.get('summary');
-      prog.facilities = String(fd.get('facilities') || '').split('\n').map(s => s.trim()).filter(Boolean);
-      prog.highlights = String(fd.get('highlights') || '').split('\n').map(s => s.trim()).filter(Boolean);
-      prog.included = String(fd.get('included') || '').split('\n').map(s => s.trim()).filter(Boolean);
-      prog.excluded = String(fd.get('excluded') || '').split('\n').map(s => s.trim()).filter(Boolean);
-
-      prog.itinerary = String(fd.get('itineraryText') || '')
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean)
-        .map((line, i) => {
-          const parts = line.split('|').map(s => s.trim());
-          return {
-            day: parts[0] || `Day ${i + 1}`,
-            title: parts[1] || 'Nile Experience',
-            desc: parts[2] || parts[1] || '',
-            meals: parts[3] || 'Breakfast · Lunch · Dinner'
-          };
-        });
-
-      prog.cabins = String(fd.get('cabinsText') || '')
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean)
-        .map((line, i) => {
-          const parts = line.split('|').map(s => s.trim());
-          return {
-            id: 'cabin-' + (i + 1),
-            name: parts[0] || 'Deluxe Cabin',
-            priceDelta: Number(parts[1]) || 0,
-            desc: parts[2] || ''
-          };
-        });
-
-      prog.canBeAddonForOthers = fd.get('canBeAddonForOthers') === 'on';
-      if (fd.get('allowAllAddons') === 'on') {
-        prog.allowedAddonIds = ['ALL'];
-      } else {
-        prog.allowedAddonIds = fd.getAll('allowedAddonIds');
-      }
-
-      editingProgramContext = null;
-      await CMS.save();
-      showToast('تم حفظ البرنامج بنجاح');
-      renderAdmin(containerSelector);
-    });
-
-    // 2.5 Sightseeing & Nubian and the Nile events
-    $('#btn-add-sight')?.addEventListener('click', async () => {
-      if (!Array.isArray(st.sightseeingPlaces)) st.sightseeingPlaces = [];
-      st.sightseeingPlaces.unshift({
-        id: 'sight-' + Date.now(),
-        slug: 'custom-sightseeing-' + Math.floor(100 + Math.random() * 900),
-        location: 'Aswan Nuba',
-        title: 'New Guided Sightseeing Excursion',
-        highlights: 'Guided visit with licensed private Egyptologist, entry tickets and private transfers.',
-        shortDesc: 'Guided visit with licensed private Egyptologist, entry tickets and private transfers.',
-        fullOverview: 'Experience this historic Nile monument with your personal licensed Egyptologist guide, private air-conditioned transfers and official entrance tickets included.',
-        duration: '3 Hours',
-        price: 55,
-        priceUnit: 'per person',
-        image: 'assets/egypt-temple.webp',
-        enabled: true,
-        canAddToJourney: true
-      });
-      await CMS.save();
-      showToast('تم إضافة مزار سياحي جديد');
-      renderAdmin(containerSelector);
-    });
-
-    $$('.adm-sight-form').forEach(form => {
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const idx = Number(form.dataset.sightIdx);
-        const fd = new FormData(form);
-        if (st.sightseeingPlaces && st.sightseeingPlaces[idx]) {
+          <label class="adm-switch" style="margin-top:12px">
+            <input type="checkbox" name="enabled" ${pl.enabled !== false ? 'checked' : ''}>
+            <span>مفعّل في "Nubian and the Nile" وداخل البرامج</span>
+          </label>
+        </form>
+      `,
+      footerHtml: `
+        <button type="button" class="adm-btn-outline" id="btn-drawer-cancel">إلغاء</button>
+        <button type="submit" form="adm-sight-drawer-form" class="adm-btn-gold">حفظ التعديلات ✓</button>
+      `,
+      onOpen: (dlg) => {
+        $('#btn-drawer-cancel', dlg)?.addEventListener('click', () => dlg.close());
+        $('#adm-sight-drawer-form', dlg)?.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
           st.sightseeingPlaces[idx] = {
-            ...st.sightseeingPlaces[idx],
+            ...pl,
             title: fd.get('title'),
             slug: slugify(fd.get('title')),
             location: fd.get('location'),
@@ -1279,53 +900,122 @@ window.NileTrailsAdmin = (() => {
             fullOverview: fd.get('fullOverview'),
             enabled: fd.get('enabled') === 'on'
           };
-          await CMS.save();
-          showToast('تم حفظ تعديل المزار السياحي');
-          renderAdmin(containerSelector);
-        }
+          dlg.close();
+          await saveAndRefresh(containerSelector, `تم تحديث "${st.sightseeingPlaces[idx].title}"`);
+        });
+      }
+    });
+  }
+
+  // ==================== ADD-ONS TAB (COMPACT + DRAWER) ====================
+  function renderAddonsTab(st) {
+    const cur = st.settings?.currencySymbol || '$';
+    const addons = st.addons || [];
+    const linkedProgs = [];
+    [...(st.cruises || []), ...(st.dahabiyas || [])].forEach(v => {
+      (v.programs || []).forEach(p => {
+        if (p.canBeAddonForOthers) linkedProgs.push({ v, p });
       });
     });
 
-    $$('[data-delete-sight]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const idx = Number(btn.dataset.deleteSight);
-        if (st.sightseeingPlaces) {
-          st.sightseeingPlaces.splice(idx, 1);
-          await CMS.save();
-          showToast('تم حذف المزار السياحي');
-          renderAdmin(containerSelector);
-        }
-      });
-    });
+    return `
+      <div class="adm-section-head">
+        <div>
+          <h2>إدارة الإضافات والبرامج الاختيارية (${addons.length})</h2>
+          <p>تحكم في خدمات VIP، المنطاد، وبرامج القاهرة والبحر الأحمر التي تظهر للعميل عند الحجز.</p>
+        </div>
+        <button type="button" class="adm-btn-gold" id="btn-add-addon">+ إضافة Add-on جديد</button>
+      </div>
 
-    // 3. Add-ons events
-    $('#btn-add-addon')?.addEventListener('click', async () => {
-      st.addons.unshift({
-        id: 'addon-' + Date.now(),
-        title: 'New Program Extension / Add-on',
-        type: 'program-extension',
-        category: 'Other Program Extension',
-        duration: '+2 Days / 1 Night',
-        price: 290,
-        priceUnit: 'per person',
-        image: 'assets/egypt-temple.webp',
-        summary: 'Private guided extension program with transfers and accommodation included.',
-        enabled: true,
-        showOnHome: true
-      });
-      await CMS.save();
-      showToast('تم إضافة Add-on جديد');
-      renderAdmin(containerSelector);
-    });
+      <div class="adm-compact-grid">
+        ${addons.map((ad, idx) => `
+          <article class="adm-compact-card ${ad.enabled === false ? 'is-off' : ''}">
+            <div class="adm-cc-head">
+              <img src="${esc(ad.image || 'assets/egypt-temple.webp')}" alt="" class="adm-cc-thumb">
+              <div class="adm-cc-info">
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <span class="pill home">${esc(ad.category)}</span>
+                  ${ad.showOnHome ? '<span class="pill on">بالرئيسية</span>' : ''}
+                </div>
+                <h4>${esc(ad.title)}</h4>
+                <small>⏱ ${esc(ad.duration)} · ${esc(ad.priceUnit)}</small>
+              </div>
+            </div>
+            <div class="adm-cc-quickbar">
+              <label class="adm-inline-price">
+                <span>السعر (${cur}):</span>
+                <input type="number" value="${Number(ad.price) || 0}" data-quick-addon-price="${idx}" min="0" aria-label="سعر ${esc(ad.title)}">
+              </label>
+              <label class="adm-switch-mini">
+                <input type="checkbox" data-quick-addon-toggle="${idx}" ${ad.enabled !== false ? 'checked' : ''}>
+                <span>${ad.enabled !== false ? 'مفعّل' : 'مخفي'}</span>
+              </label>
+              <div class="adm-cc-btns">
+                <button type="button" class="adm-btn-primary-sm" data-open-addon-drawer="${idx}">تعديل</button>
+                <button type="button" class="adm-btn-danger-sm" data-delete-addon="${idx}">حذف</button>
+              </div>
+            </div>
+          </article>
+        `).join('')}
+      </div>
 
-    $$('.adm-addon-form').forEach(form => {
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const idx = Number(form.dataset.addonIdx);
-        const fd = new FormData(form);
-        if (st.addons[idx]) {
+      ${linkedProgs.length ? `
+        <div class="adm-card" style="margin-top:22px">
+          <h3>برامج الكروزات والذهبيات المفعّلة تلقائياً كـ Add-on (${linkedProgs.length})</h3>
+          <div class="adm-linked-list">
+            ${linkedProgs.map(lp => `<div>✦ <strong>${esc(lp.p.title)}</strong> (${esc(lp.v.title)}) — ${cur}${lp.p.basePrice}</div>`).join('')}
+          </div>
+        </div>
+      ` : ''}
+    `;
+  }
+
+  function openAddonDrawer(st, idx, containerSelector) {
+    const ad = st.addons?.[idx];
+    if (!ad) return;
+    openSlideDrawer({
+      title: `تعديل إضافة: ${ad.title}`,
+      subtitle: ad.category || 'Program Extension',
+      bodyHtml: `
+        <form id="adm-addon-drawer-form" class="adm-drawer-form">
+          <div class="adm-form-grid">
+            <label>الاسم * <input type="text" name="title" value="${esc(ad.title)}" required autofocus></label>
+            <label>النوع
+              <select name="type">
+                <option value="program-extension" ${ad.type === 'program-extension' ? 'selected' : ''}>برنامج إضافي (Extension)</option>
+                <option value="excursion" ${ad.type === 'excursion' ? 'selected' : ''}>رحلة سياحية (Excursion)</option>
+                <option value="service" ${ad.type === 'service' ? 'selected' : ''}>خدمة VIP / انتقال</option>
+              </select>
+            </label>
+            <label>التصنيف <input type="text" name="category" value="${esc(ad.category)}"></label>
+            <label>المدة <input type="text" name="duration" value="${esc(ad.duration)}"></label>
+            <label>السعر (USD) <input type="number" name="price" value="${ad.price}" min="0" required></label>
+            <label>طريقة الحساب
+              <select name="priceUnit">
+                <option value="per person" ${ad.priceUnit === 'per person' ? 'selected' : ''}>لكل فرد (per person)</option>
+                <option value="per booking" ${ad.priceUnit === 'per booking' ? 'selected' : ''}>لكل حجز (per booking)</option>
+              </select>
+            </label>
+            <div class="full-col">${mediaFieldHtml('image', 'صورة الإضافة', ad.image, false)}</div>
+            <label class="full-col">الوصف <textarea name="summary" rows="3">${esc(ad.summary)}</textarea></label>
+          </div>
+          <div class="adm-toggles-row" style="margin-top:14px">
+            <label class="adm-switch"><input type="checkbox" name="enabled" ${ad.enabled !== false ? 'checked' : ''}><span>مفعّل داخل نماذج البرامج</span></label>
+            <label class="adm-switch"><input type="checkbox" name="showOnHome" ${ad.showOnHome ? 'checked' : ''}><span>إظهار في الصفحة الرئيسية</span></label>
+          </div>
+        </form>
+      `,
+      footerHtml: `
+        <button type="button" class="adm-btn-outline" id="btn-drawer-cancel">إلغاء</button>
+        <button type="submit" form="adm-addon-drawer-form" class="adm-btn-gold">حفظ الإضافة ✓</button>
+      `,
+      onOpen: (dlg) => {
+        $('#btn-drawer-cancel', dlg)?.addEventListener('click', () => dlg.close());
+        $('#adm-addon-drawer-form', dlg)?.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
           st.addons[idx] = {
-            ...st.addons[idx],
+            ...ad,
             title: fd.get('title'),
             type: fd.get('type'),
             category: fd.get('category'),
@@ -1337,210 +1027,1052 @@ window.NileTrailsAdmin = (() => {
             enabled: fd.get('enabled') === 'on',
             showOnHome: fd.get('showOnHome') === 'on'
           };
-          await CMS.save();
-          showToast('تم حفظ تعديلات الـ Add-on');
-          renderAdmin(containerSelector);
+          dlg.close();
+          await saveAndRefresh(containerSelector, `تم تحديث "${st.addons[idx].title}"`);
+        });
+      }
+    });
+  }
+
+  // ==================== FAQS MANAGER TAB (NEW!) ====================
+  function renderFaqsTab(st) {
+    const faqs = st.faqs || [];
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = faqs.map((f, idx) => ({ f, idx })).filter(({ f }) => {
+      if (faqScopeFilter !== 'all-filter' && faqScopeFilter !== 'all') {
+        if (f.scope !== faqScopeFilter) return false;
+      }
+      if (!q) return true;
+      return `${f.question} ${f.answer} ${f.scope}`.toLowerCase().includes(q);
+    });
+
+    const scopeName = (code) => (FAQ_SCOPES.find(s => s[0] === code)?.[1]) || code || 'عام';
+
+    return `
+      <div class="adm-section-head">
+        <div>
+          <h2>إدارة الأسئلة الشائعة — FAQ (${faqs.length})</h2>
+          <p>تظهر هذه الأسئلة تلقائياً أسفل كل صفحة في الموقع حسب النطاق المحدد (صفحة محددة أو كل الصفحات).</p>
+        </div>
+        <button type="button" class="adm-btn-gold" id="btn-add-faq">+ إضافة سؤال جديد</button>
+      </div>
+
+      <div class="adm-toolbar">
+        <div class="adm-filter-chips">
+          <button type="button" class="adm-chip ${faqScopeFilter === 'all' ? 'active' : ''}" data-faq-scope-filter="all">الكل (${faqs.length})</button>
+          ${FAQ_SCOPES.map(([code, lbl]) => `
+            <button type="button" class="adm-chip ${faqScopeFilter === code && faqScopeFilter !== 'all' ? 'active' : ''}" data-faq-scope-filter="${code}">${esc(lbl.split('(')[0].trim())}</button>
+          `).join('')}
+        </div>
+        <div class="adm-search-box">
+          <input type="search" id="adm-global-search" value="${esc(searchQuery)}" placeholder="🔍 ابحث في الأسئلة أو الإجابات..." aria-label="بحث في الأسئلة الشائعة">
+        </div>
+      </div>
+
+      <div class="adm-faq-admin-list">
+        ${!filtered.length ? '<div class="adm-empty">لا توجد أسئلة مطابقة. اضغط "+ إضافة سؤال جديد" للبدء.</div>' : filtered.map(({ f, idx }) => `
+          <article class="adm-faq-row ${f.enabled === false ? 'is-off' : ''}">
+            <div class="adm-faq-row-main">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+                <span class="pill home">${esc(scopeName(f.scope))}</span>
+                <em class="pill ${f.enabled !== false ? 'on' : 'off'}">${f.enabled !== false ? 'ظاهر بالموقع' : 'مخفي'}</em>
+              </div>
+              <h4>${esc(f.question)}</h4>
+              <p>${esc(f.answer)}</p>
+            </div>
+            <div class="adm-faq-row-actions">
+              <button type="button" class="adm-btn-outline-sm" data-move-faq="${idx}:-1" title="تحريك لأعلى">↑</button>
+              <button type="button" class="adm-btn-outline-sm" data-move-faq="${idx}:1" title="تحريك لأسفل">↓</button>
+              <label class="adm-switch-mini">
+                <input type="checkbox" data-quick-faq-toggle="${idx}" ${f.enabled !== false ? 'checked' : ''}>
+                <span>مفعّل</span>
+              </label>
+              <button type="button" class="adm-btn-primary-sm" data-open-faq-drawer="${idx}">تعديل</button>
+              <button type="button" class="adm-btn-danger-sm" data-delete-faq="${idx}">حذف</button>
+            </div>
+          </article>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function openFaqDrawer(st, idx, containerSelector) {
+    const isNew = idx === null || idx === undefined;
+    const item = isNew
+      ? { id: 'faq-' + Date.now(), scope: 'all', question: '', answer: '', enabled: true }
+      : st.faqs[idx];
+    if (!item) return;
+
+    openSlideDrawer({
+      title: isNew ? 'إضافة سؤال شائع جديد' : 'تعديل السؤال والإجابة',
+      subtitle: 'يظهر تلقائياً في أسفل صفحات الموقع',
+      bodyHtml: `
+        <form id="adm-faq-drawer-form" class="adm-drawer-form">
+          <div class="adm-form-grid">
+            <label class="full-col">نطاق الظهور (الصفحة المستهدفة)
+              <select name="scope">
+                ${FAQ_SCOPES.map(([code, lbl]) => `<option value="${code}" ${item.scope === code ? 'selected' : ''}>${esc(lbl)}</option>`).join('')}
+              </select>
+            </label>
+            <label class="full-col">نص السؤال (English or Arabic) *
+              <input type="text" name="question" value="${esc(item.question)}" required autofocus placeholder="e.g. What is included in my Nile Cruise?">
+            </label>
+            <label class="full-col">الإجابة التفصيلية *
+              <textarea name="answer" rows="5" required placeholder="اكتب إجابة واضحة ومفيدة للعميل الأجنبي...">${esc(item.answer)}</textarea>
+            </label>
+          </div>
+          <label class="adm-switch" style="margin-top:12px">
+            <input type="checkbox" name="enabled" ${item.enabled !== false ? 'checked' : ''}>
+            <span>إظهار السؤال للزوار على الموقع</span>
+          </label>
+        </form>
+      `,
+      footerHtml: `
+        <button type="button" class="adm-btn-outline" id="btn-drawer-cancel">إلغاء</button>
+        <button type="submit" form="adm-faq-drawer-form" class="adm-btn-gold">${isNew ? 'إضافة السؤال ✓' : 'حفظ التعديلات ✓'}</button>
+      `,
+      onOpen: (dlg) => {
+        $('#btn-drawer-cancel', dlg)?.addEventListener('click', () => dlg.close());
+        $('#adm-faq-drawer-form', dlg)?.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          const updated = {
+            id: item.id,
+            scope: fd.get('scope') || 'all',
+            question: fd.get('question'),
+            answer: fd.get('answer'),
+            enabled: fd.get('enabled') === 'on'
+          };
+          if (!Array.isArray(st.faqs)) st.faqs = [];
+          if (isNew) st.faqs.unshift(updated);
+          else st.faqs[idx] = updated;
+          dlg.close();
+          await saveAndRefresh(containerSelector, isNew ? 'تم إضافة السؤال بنجاح' : 'تم حفظ تعديل السؤال');
+        });
+      }
+    });
+  }
+
+  // ==================== CUSTOM PAGES BUILDER TAB ====================
+  function renderPagesTab(st) {
+    const pages = st.customPages || [];
+    if (!editingPageId || !pages.some(pg => pg.id === editingPageId)) {
+      editingPageId = pages[0]?.id;
+    }
+    const pg = pages.find(x => x.id === editingPageId);
+
+    return `
+      <div class="adm-section-head">
+        <div>
+          <h2>إدارة وبناء الصفحات المخصصة</h2>
+          <p>أضف صفحات جديدة بالكامل وتحكم في ظهورها بالقائمة العلوية أو الصفحة الرئيسية ومحتواها الداخلي.</p>
+        </div>
+        <button type="button" class="adm-btn-gold" id="btn-add-custom-page">+ إنشاء صفحة جديدة</button>
+      </div>
+
+      <div class="adm-split-workspace">
+        <aside class="adm-vessel-list">
+          <div class="adm-list-header">الصفحات (${pages.length})</div>
+          ${!pages.length ? '<p class="muted" style="padding:16px">لا توجد صفحات بعد.</p>' : pages.map(item => `
+            <div class="adm-vessel-item ${item.id === pg?.id ? 'active' : ''}" data-select-page="${esc(item.id)}">
+              <img src="${esc(item.heroImage || 'assets/egypt-temple.webp')}" alt="">
+              <div style="min-width:0;flex:1">
+                <strong>${esc(item.title)}</strong>
+                <span dir="ltr">/page/${esc(item.slug)}</span>
+                <div class="adm-item-badges">
+                  <em class="pill ${item.enabled !== false ? 'on' : 'off'}">${item.enabled !== false ? 'مفعّلة' : 'مخفية'}</em>
+                  ${item.showOnHome ? '<em class="pill home">بالرئيسية</em>' : ''}
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </aside>
+
+        <div>
+          ${pg ? `
+            <form id="adm-page-form" data-page-id="${esc(pg.id)}" class="adm-card">
+              <div class="adm-card-head">
+                <h3>تحرير: ${esc(pg.title)}</h3>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <a href="#/page/${esc(pg.slug)}" target="_blank" class="adm-btn-outline-sm">معاينة ↗</a>
+                  <button type="submit" class="adm-btn-gold">حفظ الصفحة</button>
+                </div>
+              </div>
+
+              <div class="adm-form-grid">
+                <label>عنوان الصفحة * <input type="text" name="title" value="${esc(pg.title)}" required></label>
+                <label>الرابط المختصر (Slug) <input type="text" name="slug" value="${esc(pg.slug)}" required dir="ltr"></label>
+                <label>العنوان الصغير (Eyebrow) <input type="text" name="heroEyebrow" value="${esc(pg.heroEyebrow)}"></label>
+                <label>مكان القائمة العلوية
+                  <select name="navParent">
+                    <option value="beyond-the-nile" ${pg.navParent === 'beyond-the-nile' ? 'selected' : ''}>ضمن Beyond the Nile</option>
+                    <option value="journeys" ${pg.navParent === 'journeys' ? 'selected' : ''}>ضمن Journeys</option>
+                    <option value="nile-cruises" ${pg.navParent === 'nile-cruises' ? 'selected' : ''}>ضمن Nile Cruises</option>
+                    <option value="dahabiyas" ${pg.navParent === 'dahabiyas' ? 'selected' : ''}>ضمن Dahabiyas</option>
+                    <option value="about" ${pg.navParent === 'about' ? 'selected' : ''}>ضمن About</option>
+                    <option value="top" ${pg.navParent === 'top' ? 'selected' : ''}>رابط رئيسي بالهيدر</option>
+                  </select>
+                </label>
+                <div class="full-col">${mediaFieldHtml('heroImage', 'صورة الخلفية للصفحة', pg.heroImage, false)}</div>
+                <label class="full-col">وصف الصفحة الرئيسي <textarea name="heroSub" rows="2">${esc(pg.heroSub)}</textarea></label>
+              </div>
+
+              <div class="adm-toggles-row">
+                <label class="adm-switch"><input type="checkbox" name="enabled" ${pg.enabled !== false ? 'checked' : ''}><span>نشر الصفحة</span></label>
+                <label class="adm-switch"><input type="checkbox" name="showInNavbar" ${pg.showInNavbar ? 'checked' : ''}><span>إظهار في القائمة</span></label>
+                <label class="adm-switch"><input type="checkbox" name="showOnHome" ${pg.showOnHome ? 'checked' : ''}><span>إظهار في الرئيسية</span></label>
+                <button type="button" class="adm-btn-danger-sm" data-delete-page="${esc(pg.id)}">حذف الصفحة</button>
+              </div>
+
+              <hr class="adm-sep">
+              <div class="adm-card-head" style="border:0;padding-bottom:8px">
+                <h3>البلوكات الداخلية (${(pg.blocks || []).length})</h3>
+                <div class="adm-add-block-bar">
+                  <select id="new-block-type">
+                    <option value="text-image">نص + صورة</option>
+                    <option value="cards-grid">شبكة كروت</option>
+                    <option value="cta-banner">بنر دعوة للحجز (CTA)</option>
+                  </select>
+                  <button type="button" class="adm-btn-primary" id="btn-add-page-block" data-page-id="${esc(pg.id)}">+ إضافة بلوك</button>
+                </div>
+              </div>
+
+              <div class="adm-blocks-list">
+                ${(pg.blocks || []).map((blk, bIdx) => `
+                  <div class="adm-block-card" data-block-index="${bIdx}">
+                    <div class="adm-block-head">
+                      <strong>بلوك #${bIdx + 1} (${esc(blk.type)})</strong>
+                      <div style="display:flex;gap:6px">
+                        <button type="button" class="adm-btn-outline-sm" data-move-block="${bIdx}:-1">↑</button>
+                        <button type="button" class="adm-btn-outline-sm" data-move-block="${bIdx}:1">↓</button>
+                        <button type="button" class="adm-btn-danger-sm" data-delete-block="${bIdx}">حذف</button>
+                      </div>
+                    </div>
+                    <input type="hidden" name="blk_type_${bIdx}" value="${esc(blk.type)}">
+                    <div class="adm-form-grid">
+                      <label>العنوان <input type="text" name="blk_heading_${bIdx}" value="${esc(blk.heading)}"></label>
+                      ${blk.type === 'text-image' ? `<label>العنوان الفرعي <input type="text" name="blk_eyebrow_${bIdx}" value="${esc(blk.eyebrow || '')}"></label>` : ''}
+                      ${blk.type === 'text-image' ? `<div class="full-col">${mediaFieldHtml(`blk_image_${bIdx}`, 'صورة البلوك', blk.image || '', false)}</div>` : ''}
+                      ${blk.type !== 'cards-grid' ? `<label class="full-col">المحتوى <textarea name="blk_body_${bIdx}" rows="3">${esc(blk.body || '')}</textarea></label>` : ''}
+                      ${blk.type === 'cta-banner' ? `
+                        <label>نص الزر <input type="text" name="blk_btnText_${bIdx}" value="${esc(blk.btnText || '')}"></label>
+                        <label>الرابط <input type="text" name="blk_btnUrl_${bIdx}" value="${esc(blk.btnUrl || '')}" dir="ltr"></label>
+                      ` : ''}
+                      ${blk.type === 'cards-grid' ? `
+                        <label class="full-col">بيانات الكروت (عنوان | وصف مختصر لكل سطر)
+                          <textarea name="blk_items_${bIdx}" rows="4">${esc((blk.items || []).map(it => `${it.title || ''} | ${it.desc || ''}`).join('\n'))}</textarea>
+                        </label>
+                      ` : ''}
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </form>
+          ` : '<div class="adm-empty">أنشئ صفحة جديدة للبدء.</div>'}
+        </div>
+      </div>
+    `;
+  }
+
+  // ==================== HOMEPAGE TAB (WITH WORKING heroVideo) ====================
+  function renderHomepageTab(st) {
+    const hc = st.homeConfig || {};
+    const sections = hc.sectionsOrder || [];
+
+    return `
+      <div class="adm-section-head">
+        <div>
+          <h2>تخطيط الصفحة الرئيسية (Home Appearance)</h2>
+          <p>تحكم في الفيديو الافتتاحي الصامت، النصوص الرئيسية، وإظهار أو ترتيب أي قسم بالصفحة الرئيسية.</p>
+        </div>
+      </div>
+
+      <div class="adm-grid-2">
+        <form id="adm-home-hero-form" class="adm-card">
+          <div class="adm-card-head">
+            <h3>واجهة البداية (Hero Banner & Video)</h3>
+            <button type="submit" class="adm-btn-gold">حفظ التغييرات</button>
+          </div>
+          <div class="adm-form-grid">
+            <label class="full-col">النص التمهيدي (Eyebrow) <input type="text" name="heroEyebrow" value="${esc(hc.heroEyebrow)}"></label>
+            <label class="full-col">العنوان الرئيسي (يدعم &lt;em&gt; و &lt;br&gt;) <input type="text" name="heroTitle" value="${esc(hc.heroTitle)}"></label>
+            <label class="full-col">الوصف السفلي <textarea name="heroSub" rows="2">${esc(hc.heroSub)}</textarea></label>
+            <div class="full-col">${mediaFieldHtml('heroVideo', 'فيديو الواجهة التلقائي الصامت (Hero Video)', hc.heroVideo || '', true)}</div>
+            <div class="full-col">${mediaFieldHtml('heroImage', 'صورة الغلاف البديلة (Poster Image)', hc.heroImage || '', false)}</div>
+            <label>زر أساسي <input type="text" name="primaryBtnText" value="${esc(hc.primaryBtnText)}"></label>
+            <label>رابط الزر الأساسي <input type="text" name="primaryBtnUrl" value="${esc(hc.primaryBtnUrl)}" dir="ltr"></label>
+            <label>زر ثانوي <input type="text" name="secondaryBtnText" value="${esc(hc.secondaryBtnText)}"></label>
+            <label>رابط الزر الثانوي <input type="text" name="secondaryBtnUrl" value="${esc(hc.secondaryBtnUrl)}" dir="ltr"></label>
+          </div>
+        </form>
+
+        <div class="adm-card">
+          <h3>أقسام الصفحة الرئيسية (إظهار / إخفاء / ترتيب)</h3>
+          <p class="adm-card-sub" style="margin-bottom:14px">يتم حفظ أي تبديل تلقائياً.</p>
+          <div class="adm-sections-sorter">
+            ${sections.map((sec, idx) => `
+              <div class="adm-sec-item ${sec.enabled === false ? 'off' : ''}">
+                <label class="adm-switch">
+                  <input type="checkbox" data-toggle-section="${idx}" ${sec.enabled !== false ? 'checked' : ''}>
+                  <span><strong>${esc(sec.label)}</strong> <small dir="ltr">(${esc(sec.id)})</small></span>
+                </label>
+                <div style="display:flex;gap:6px">
+                  <button type="button" class="adm-btn-outline-sm" data-move-section="${idx}:-1">↑</button>
+                  <button type="button" class="adm-btn-outline-sm" data-move-section="${idx}:1">↓</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ==================== COLLECTIONS TAB (CLEAN WITH SLIDE-OVER DRAWER) ====================
+  function renderCollectionsTab(st) {
+    const map = {
+      journeys: { label: 'البرامج المتكاملة (Journeys)', list: st.journeys || [], key: 'journeys' },
+      destinations: { label: 'Beyond the Nile Destinations', list: st.destinations || [], key: 'destinations' },
+      stories: { label: 'المقالات (Nile Stories)', list: st.stories || [], key: 'stories' }
+    };
+    const active = map[collectionSubTab] || map.journeys;
+
+    return `
+      <div class="adm-section-head">
+        <div>
+          <h2>المحتوى المتنوع (Journeys · Destinations · Stories)</h2>
+          <p>اختر القسم وعدّل أي بطاقة في نافذة تحرير جانبية نظيفة.</p>
+        </div>
+        <button type="button" class="adm-btn-gold" id="btn-add-collection-item">+ إضافة عنصر جديد</button>
+      </div>
+
+      <div class="adm-toolbar">
+        <div class="adm-filter-chips">
+          ${Object.entries(map).map(([k, v]) => `
+            <button type="button" class="adm-chip ${collectionSubTab === k ? 'active' : ''}" data-coll-subtab="${k}">${v.label} (${v.list.length})</button>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="adm-compact-grid">
+        ${active.list.map((item, idx) => `
+          <article class="adm-compact-card ${item.enabled === false ? 'is-off' : ''}">
+            <div class="adm-cc-head">
+              <img src="${esc(item.image || 'assets/egypt-temple.webp')}" alt="" class="adm-cc-thumb">
+              <div class="adm-cc-info">
+                <span class="pill home">${esc(item.category || item.duration || item.route || active.key)}</span>
+                <h4>${esc(item.name || item.title)}</h4>
+                <small>${esc((item.sub || item.desc || item.excerpt || '').slice(0, 80))}...</small>
+              </div>
+            </div>
+            <div class="adm-cc-quickbar">
+              <label class="adm-switch-mini">
+                <input type="checkbox" data-quick-coll-toggle="${active.key}:${idx}" ${item.enabled !== false ? 'checked' : ''}>
+                <span>${item.enabled !== false ? 'مفعّل' : 'مخفي'}</span>
+              </label>
+              <div class="adm-cc-btns">
+                <button type="button" class="adm-btn-primary-sm" data-open-coll-drawer="${active.key}:${idx}">تعديل</button>
+                <button type="button" class="adm-btn-danger-sm" data-delete-coll="${active.key}:${idx}">حذف</button>
+              </div>
+            </div>
+          </article>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function openCollectionDrawer(st, collKey, idx, containerSelector) {
+    const item = st[collKey]?.[idx];
+    if (!item) return;
+    const isStory = collKey === 'stories';
+    const titleVal = isStory ? item.title : item.name;
+    const subVal = isStory ? item.excerpt : (collKey === 'destinations' ? item.desc : item.sub);
+
+    openSlideDrawer({
+      title: `تعديل: ${titleVal}`,
+      subtitle: collKey,
+      bodyHtml: `
+        <form id="adm-coll-drawer-form" class="adm-drawer-form">
+          <div class="adm-form-grid">
+            <label class="full-col">الاسم / العنوان * <input type="text" name="title" value="${esc(titleVal)}" required autofocus></label>
+            <label>${isStory ? 'التصنيف' : (collKey === 'destinations' ? 'الدور / الموقع' : 'المدة')}
+              <input type="text" name="meta1" value="${esc(isStory ? item.category : (collKey === 'destinations' ? item.role : item.duration))}">
+            </label>
+            <label>${isStory ? 'تاريخ النشر' : (collKey === 'destinations' ? 'الرابط' : 'خط السير')}
+              <input type="text" name="meta2" value="${esc(isStory ? item.date : (collKey === 'destinations' ? item.slug : item.route))}">
+            </label>
+            <div class="full-col">${mediaFieldHtml('image', 'الصورة', item.image || 'assets/egypt-temple.webp', false)}</div>
+            <label class="full-col">الوصف / المحتوى <textarea name="summary" rows="4">${esc(subVal || '')}</textarea></label>
+          </div>
+          <div class="adm-toggles-row" style="margin-top:12px">
+            <label class="adm-switch"><input type="checkbox" name="enabled" ${item.enabled !== false ? 'checked' : ''}><span>مفعّل</span></label>
+            <label class="adm-switch"><input type="checkbox" name="showOnHome" ${item.showOnHome !== false ? 'checked' : ''}><span>إظهار بالرئيسية</span></label>
+          </div>
+        </form>
+      `,
+      footerHtml: `
+        <button type="button" class="adm-btn-outline" id="btn-drawer-cancel">إلغاء</button>
+        <button type="submit" form="adm-coll-drawer-form" class="adm-btn-gold">حفظ التعديل ✓</button>
+      `,
+      onOpen: (dlg) => {
+        $('#btn-drawer-cancel', dlg)?.addEventListener('click', () => dlg.close());
+        $('#adm-coll-drawer-form', dlg)?.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          if (isStory) {
+            item.title = fd.get('title');
+            item.slug = slugify(item.title);
+            item.category = fd.get('meta1');
+            item.date = fd.get('meta2');
+            item.excerpt = fd.get('summary');
+          } else if (collKey === 'destinations') {
+            item.name = fd.get('title');
+            item.role = fd.get('meta1');
+            item.desc = fd.get('summary');
+          } else {
+            item.name = fd.get('title');
+            item.slug = slugify(item.name);
+            item.duration = fd.get('meta1');
+            item.route = fd.get('meta2');
+            item.sub = fd.get('summary');
+          }
+          item.image = fd.get('image');
+          item.enabled = fd.get('enabled') === 'on';
+          item.showOnHome = fd.get('showOnHome') === 'on';
+          dlg.close();
+          await saveAndRefresh(containerSelector, 'تم حفظ التعديلات بنجاح');
+        });
+      }
+    });
+  }
+
+  // ==================== SETTINGS TAB ====================
+  function renderSettingsTab(st) {
+    const s = st.settings || {};
+    return `
+      <div class="adm-section-head">
+        <div>
+          <h2>إعدادات الموقع والنسخ الاحتياطي</h2>
+          <p>إدارة اسم العلامة التجارية، العملة، أرقام التواصل، وتصدير أو استيراد نسخة احتياطية كاملة بصيغة JSON.</p>
+        </div>
+      </div>
+
+      <div class="adm-grid-2">
+        <form id="adm-settings-form" class="adm-card">
+          <div class="adm-card-head">
+            <h3>الإعدادات العامة</h3>
+            <button type="submit" class="adm-btn-gold">حفظ الإعدادات</button>
+          </div>
+          <div class="adm-form-grid">
+            <label>اسم الموقع <input type="text" name="brandName" value="${esc(s.brandName)}"></label>
+            <label>الشعار <input type="text" name="tagline" value="${esc(s.tagline)}"></label>
+            <label>رمز العملة <input type="text" name="currencySymbol" value="${esc(s.currencySymbol || '$')}"></label>
+            <label>البريد الإلكتروني <input type="email" name="contactEmail" value="${esc(s.contactEmail)}" dir="ltr"></label>
+            <label>رقم الهاتف / واتساب <input type="text" name="contactPhone" value="${esc(s.contactPhone)}" dir="ltr"></label>
+            <label>رابط فيديو يوتيوب (مصدر البرامج) <input type="text" name="youtubeHeroUrl" value="${esc(s.youtubeHeroUrl || '')}" dir="ltr"></label>
+          </div>
+          <label class="adm-switch" style="margin-top:16px">
+            <input type="checkbox" name="showAdminBar" ${s.showAdminBar !== false ? 'checked' : ''}>
+            <span>إظهار شريط المدير السريع بالأسفل للوصول للوحة التحكم</span>
+          </label>
+        </form>
+
+        <div class="adm-card">
+          <h3>النسخ الاحتياطي واستعادة النظام</h3>
+          <p class="adm-card-sub">احفظ ملف نسخة احتياطية من كافة البرامج والمزارات والأسئلة أو استرجع النظام لحالته الأصلية.</p>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:20px">
+            <button type="button" class="adm-btn-primary" id="btn-export-cms">⬇ تصدير نسخة احتياطية (JSON)</button>
+            <label class="adm-btn-outline" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+              <input type="file" id="inp-import-cms" accept="application/json,.json" hidden>
+              <span>⬆ استيراد نسخة (JSON)</span>
+            </label>
+            <button type="button" class="adm-btn-danger-sm" id="btn-reset-cms" style="padding:10px 18px">↺ استعادة الضبط الافتراضي للموقع</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ==================== MAIN ADMIN RENDER SHELL ====================
+  function renderAdmin(containerSelector = '#app', opts = {}) {
+    const st = CMS.getState();
+    const container = $(containerSelector);
+    if (!container) return;
+
+    const prevScroll = opts.preserveScroll ? ($('.adm-main-scroll')?.scrollTop || window.scrollY) : 0;
+    const newEnqCount = (st.enquiries || []).filter(e => e.status === 'New').length;
+
+    const navGroups = [
+      { id: 'bookings', icon: '📥', label: 'الحجوزات والطلبات', badge: newEnqCount },
+      { id: 'cruises', icon: '🚢', label: 'الكروزات والذهبيات والبرامج', badge: (st.cruises?.length || 0) + (st.dahabiyas?.length || 0) },
+      { id: 'sightseeing', icon: '🏛', label: 'المزارات السياحية', badge: st.sightseeingPlaces?.length || 0 },
+      { id: 'addons', icon: '✦', label: 'الإضافات (Add-ons)', badge: st.addons?.length || 0 },
+      { id: 'faqs', icon: '❓', label: 'الأسئلة الشائعة (FAQ)', badge: st.faqs?.length || 0 },
+      { id: 'pages', icon: '📄', label: 'بناء الصفحات', badge: st.customPages?.length || 0 },
+      { id: 'homepage', icon: '🎨', label: 'الصفحة الرئيسية والأقسام' },
+      { id: 'collections', icon: '🗺', label: 'الرحلات والوجهات والمقالات' },
+      { id: 'settings', icon: '⚙', label: 'الإعدادات والنسخ الاحتياطي' }
+    ];
+
+    const currentNav = navGroups.find(n => n.id === activeTab) || navGroups[0];
+
+    let bodyContent = '';
+    if (activeTab === 'bookings') bodyContent = renderBookingsTab(st);
+    else if (activeTab === 'cruises') bodyContent = renderVesselsTab(st);
+    else if (activeTab === 'sightseeing') bodyContent = renderSightseeingTab(st);
+    else if (activeTab === 'addons') bodyContent = renderAddonsTab(st);
+    else if (activeTab === 'faqs') bodyContent = renderFaqsTab(st);
+    else if (activeTab === 'pages') bodyContent = renderPagesTab(st);
+    else if (activeTab === 'homepage') bodyContent = renderHomepageTab(st);
+    else if (activeTab === 'collections') bodyContent = renderCollectionsTab(st);
+    else if (activeTab === 'settings') bodyContent = renderSettingsTab(st);
+
+    container.innerHTML = `
+      <div class="adm-shell-v2" dir="rtl" lang="ar">
+        <aside class="adm-sidebar" aria-label="قائمة لوحة التحكم">
+          <div class="adm-sidebar-brand">
+            <span class="adm-logo-badge">NT</span>
+            <div>
+              <strong>لوحة تحكم NileTrails</strong>
+              <small>Atelier CMS · أسلوب UX الحديث</small>
+            </div>
+          </div>
+
+          <nav class="adm-sidebar-nav">
+            ${navGroups.map(t => `
+              <button type="button" class="adm-nav-btn ${activeTab === t.id ? 'active' : ''}" data-adm-tab="${t.id}">
+                <span class="adm-nav-ic">${t.icon}</span>
+                <span class="adm-nav-lbl">${t.label}</span>
+                ${typeof t.badge === 'number' ? `<span class="adm-nav-badge ${t.id === 'bookings' && newEnqCount > 0 ? 'hot' : ''}">${t.badge}</span>` : ''}
+              </button>
+            `).join('')}
+          </nav>
+
+          <div class="adm-sidebar-foot">
+            <a href="#/" class="adm-btn-gold" style="width:100%;text-align:center;text-decoration:none;display:block">العودة للموقع الحي ↗</a>
+          </div>
+        </aside>
+
+        <div class="adm-workspace-col">
+          <header class="adm-topbar-v2">
+            <div class="adm-topbar-title">
+              <span>${currentNav.icon}</span>
+              <h1>${currentNav.label}</h1>
+            </div>
+            <div class="adm-topbar-actions">
+              <span class="adm-sync-pill ${lastSavedTime ? 'synced' : ''}" id="adm-sync-status">
+                ${lastSavedTime ? `متزامن ✓ (${lastSavedTime})` : 'متزامن مع الخادم ✓'}
+              </span>
+              <a href="#/" class="adm-btn-outline-sm" target="_blank">فتح الموقع في تبويب ↗</a>
+            </div>
+          </header>
+
+          <main class="adm-main-scroll">
+            ${bodyContent}
+          </main>
+        </div>
+      </div>
+    `;
+
+    bindAdminEvents(containerSelector, st);
+    bindMediaUploadFields(container);
+
+    if (opts.preserveScroll) {
+      const scrollBox = $('.adm-main-scroll');
+      if (scrollBox) scrollBox.scrollTop = prevScroll;
+      else window.scrollTo(0, prevScroll);
+    }
+  }
+
+  // ==================== EVENT BINDING ====================
+  function bindAdminEvents(containerSelector, st) {
+    // Sidebar tab switch
+    $$('[data-adm-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activeTab = btn.dataset.admTab;
+        searchQuery = '';
+        renderAdmin(containerSelector);
+      });
+    });
+
+    // Global Search input (keeps focus cleanly without full re-render typing drop? Let's re-render on 'input' and refocus!)
+    const searchEl = $('#adm-global-search');
+    if (searchEl) {
+      searchEl.addEventListener('input', () => {
+        const pos = searchEl.selectionStart;
+        searchQuery = searchEl.value;
+        renderAdmin(containerSelector, { preserveScroll: true });
+        const nextInp = $('#adm-global-search');
+        if (nextInp) {
+          nextInp.focus();
+          nextInp.setSelectionRange(pos, pos);
         }
       });
+    }
+
+    // Bookings filters & status updates
+    $$('[data-book-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        bookingStatusFilter = btn.dataset.bookFilter;
+        renderAdmin(containerSelector);
+      });
+    });
+
+    $$('[data-enq-status]').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        const item = st.enquiries.find(x => x.id === sel.dataset.enqStatus);
+        if (item) {
+          item.status = sel.value;
+          await saveAndRefresh(containerSelector, `تم تحديث حالة الطلب #${item.id}`);
+        }
+      });
+    });
+
+    $$('[data-delete-enq]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const ok = await openConfirmDialog({
+          title: 'حذف طلب الحجز',
+          message: `هل تريد حذف الحجز #${btn.dataset.deleteEnq} نهائياً؟ لا يمكن التراجع بعد الحذف.`
+        });
+        if (!ok) return;
+        st.enquiries = st.enquiries.filter(x => x.id !== btn.dataset.deleteEnq);
+        await saveAndRefresh(containerSelector, 'تم حذف الطلب بنجاح');
+      });
+    });
+
+    // Vessel selection & edits
+    $$('[data-select-vessel]').forEach(el => {
+      el.addEventListener('click', () => {
+        selectedVesselId = el.dataset.selectVessel;
+        renderAdmin(containerSelector);
+      });
+    });
+
+    $('#adm-vessel-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const vid = e.target.dataset.vesselId;
+      const fd = new FormData(e.target);
+      const target = [...(st.cruises || []), ...(st.dahabiyas || [])].find(x => x.id === vid);
+      if (target) {
+        target.title = fd.get('title');
+        target.slug = slugify(fd.get('title'));
+        target.tier = fd.get('tier');
+        target.route = fd.get('route');
+        target.nights = Number(fd.get('nights')) || 4;
+        target.image = fd.get('image');
+        target.heroVideo = fd.get('heroVideo');
+        target.sub = fd.get('sub');
+        target.enabled = fd.get('enabled') === 'on';
+        target.showOnHome = fd.get('showOnHome') === 'on';
+        await saveAndRefresh(containerSelector, `تم حفظ تعديلات "${target.title}"`);
+      }
+    });
+
+    const addVessel = async (isDahabiya) => {
+      const id = (isDahabiya ? 'dahabiya-' : 'cruise-') + Date.now();
+      const newObj = {
+        id,
+        slug: (isDahabiya ? 'new-dahabiya-' : 'new-cruise-') + Math.floor(100 + Math.random() * 900),
+        title: isDahabiya ? 'New Boutique Dahabiya' : 'New 5-Star Nile Cruise',
+        tier: 'Luxury',
+        nights: 4,
+        route: 'Luxor – Aswan',
+        image: isDahabiya ? 'assets/nile-sailing.webp' : 'assets/nile-cruise.webp',
+        heroVideo: isDahabiya ? 'assets/videos/hero-dahabiya-1.mp4' : 'assets/videos/hero-cruise-1.mp4',
+        kind: isDahabiya ? 'dahabiya' : 'cruise',
+        sub: 'Newly added Nile vessel ready for customization.',
+        facilities: [...(CMS.DEFAULT_FACILITIES || [])],
+        enabled: true,
+        showOnHome: true,
+        programs: [{
+          id: id + '-prog-1',
+          slug: '4-nights-luxor-to-aswan',
+          tabLabel: '4 Nights',
+          tabSub: 'Luxor → Aswan',
+          title: '5 Days / 4 Nights — Luxor to Aswan Program',
+          nights: 4,
+          duration: '5 Days / 4 Nights',
+          route: 'Luxor → Esna → Edfu → Kom Ombo → Aswan',
+          basePrice: 890,
+          canBeAddonForOthers: true,
+          heroVideo: isDahabiya ? 'assets/videos/hero-dahabiya-1.mp4' : 'assets/videos/hero-cruise-1.mp4',
+          summary: 'Full-board sailing program with private Egyptologist.',
+          facilities: [...(CMS.DEFAULT_FACILITIES || [])],
+          allowedAddonIds: ['ALL'],
+          pricingSeasons: { summer: { triple: 850, double: 890, single: 1470 }, winter: { triple: 1020, double: 1050, single: 1690 } },
+          itinerary: [
+            { day: 'Day 1', stop: 'Luxor', title: 'Embarkation & Karnak Temple', desc: 'Check-in & East Bank guided tour.', meals: 'Lunch & Dinner' },
+            { day: 'Day 2', stop: 'West Bank', title: 'Valley of the Kings & Sail to Edfu', desc: 'Royal tombs & Hatshepsut Temple.', meals: 'Breakfast, Lunch & Dinner' },
+            { day: 'Day 3', stop: 'Kom Ombo', title: 'Edfu & Kom Ombo Temples', desc: 'Sail south toward Aswan.', meals: 'Breakfast, Lunch & Dinner' },
+            { day: 'Day 4', stop: 'Aswan', title: 'Philae Temple & Disembarkation', desc: 'Island temple visit & farewell.', meals: 'Breakfast' }
+          ],
+          cabins: [
+            { id: 'triple-cabin', name: 'Triple Cabin', priceDelta: -40, desc: '3 persons sharing' },
+            { id: 'double-cabin', name: 'Double Cabin', priceDelta: 0, desc: '2 persons sharing' },
+            { id: 'single-cabin', name: 'Single Cabin', priceDelta: 580, desc: 'Private sole use' }
+          ],
+          included: ['Full board meals onboard', 'Licensed Egyptologist guide'],
+          excluded: ['International flights', 'Optional sightseeing tours']
+        }]
+      };
+      if (isDahabiya) st.dahabiyas.unshift(newObj);
+      else st.cruises.unshift(newObj);
+      selectedVesselId = id;
+      await saveAndRefresh(containerSelector, `تم إضافة "${newObj.title}"`);
+    };
+
+    $('#btn-add-cruise')?.addEventListener('click', () => addVessel(false));
+    $('#btn-add-dahabiya')?.addEventListener('click', () => addVessel(true));
+
+    $$('[data-delete-vessel]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const vid = btn.dataset.deleteVessel;
+        const ok = await openConfirmDialog({
+          title: 'حذف المركب',
+          message: 'سيتم حذف المركب وكافة البرامج المرتبطة به نهائياً.'
+        });
+        if (!ok) return;
+        st.cruises = (st.cruises || []).filter(c => c.id !== vid);
+        st.dahabiyas = (st.dahabiyas || []).filter(d => d.id !== vid);
+        selectedVesselId = null;
+        await saveAndRefresh(containerSelector, 'تم حذف المركب');
+      });
+    });
+
+    $('#btn-add-program')?.addEventListener('click', async () => {
+      const vid = $('#btn-add-program').dataset.vesselId;
+      const target = [...(st.cruises || []), ...(st.dahabiyas || [])].find(x => x.id === vid);
+      if (!target) return;
+      const pid = vid + '-prog-' + Date.now();
+      const newProg = {
+        id: pid,
+        slug: 'custom-program-' + Math.floor(100 + Math.random() * 900),
+        tabLabel: '3 Nights',
+        tabSub: 'Aswan → Luxor',
+        title: 'Custom Nile Program (Aswan to Luxor)',
+        nights: 3,
+        duration: '4 Days / 3 Nights',
+        route: 'Aswan → Kom Ombo → Edfu → Luxor',
+        basePrice: 780,
+        canBeAddonForOthers: true,
+        heroVideo: target.heroVideo || 'assets/videos/hero-cruise-1.mp4',
+        summary: 'Tailored sailing itinerary with private Egyptologist.',
+        facilities: [...(CMS.DEFAULT_FACILITIES || [])],
+        allowedAddonIds: ['ALL'],
+        pricingSeasons: { summer: { triple: 750, double: 780, single: 1290 }, winter: { triple: 890, double: 920, single: 1480 } },
+        itinerary: [
+          { day: 'Day 1', stop: 'Aswan', title: 'Embarkation & Philae Temple', desc: 'Private island transfer.', meals: 'Lunch & Dinner' },
+          { day: 'Day 2', stop: 'Edfu', title: 'Kom Ombo & Horus Temple', desc: 'Scenic Nile sailing.', meals: 'Breakfast, Lunch & Dinner' },
+          { day: 'Day 3', stop: 'Luxor', title: 'Valley of the Kings & Karnak', desc: 'Full day guided exploration.', meals: 'Breakfast' }
+        ],
+        cabins: [
+          { id: 'double-cabin', name: 'Double Cabin', priceDelta: 0, desc: 'Standard river-view cabin' },
+          { id: 'royal-suite', name: 'Royal Panoramic Suite', priceDelta: 420, desc: 'Luxury upper deck' }
+        ],
+        included: ['Full-board onboard', 'Licensed Egyptologist'],
+        excluded: ['Optional balloon & Abu Simbel']
+      };
+      target.programs.push(newProg);
+      await saveAndRefresh(containerSelector, 'تم إضافة البرنامج — اضغط تعديل لفتح المحرر');
+      openProgramDrawer(st, vid, pid, containerSelector);
+    });
+
+    $$('[data-open-prog-drawer]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const [vid, pid] = btn.dataset.openProgDrawer.split('::');
+        openProgramDrawer(st, vid, pid, containerSelector);
+      });
+    });
+
+    $$('[data-delete-prog]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const [vid, pid] = btn.dataset.deleteProg.split('::');
+        const target = [...(st.cruises || []), ...(st.dahabiyas || [])].find(x => x.id === vid);
+        if (!target || target.programs.length <= 1) {
+          showToast('يجب أن يحتوي المركب على برنامج واحد على الأقل', 'error');
+          return;
+        }
+        const ok = await openConfirmDialog({ title: 'حذف البرنامج', message: 'هل تريد حذف هذا البرنامج؟' });
+        if (!ok) return;
+        target.programs = target.programs.filter(p => p.id !== pid);
+        await saveAndRefresh(containerSelector, 'تم حذف البرنامج');
+      });
+    });
+
+    // Sightseeing quick actions + drawer
+    $$('[data-sight-loc-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        sightLocationFilter = btn.dataset.sightLocFilter;
+        renderAdmin(containerSelector);
+      });
+    });
+
+    $('#btn-add-sightseeing')?.addEventListener('click', async () => {
+      if (!Array.isArray(st.sightseeingPlaces)) st.sightseeingPlaces = [];
+      st.sightseeingPlaces.unshift({
+        id: 'sight-' + Date.now(),
+        slug: 'custom-sightseeing-' + Math.floor(100 + Math.random() * 900),
+        location: 'Aswan Nuba',
+        title: 'New Guided Sightseeing Excursion',
+        highlights: 'Guided visit with licensed private Egyptologist, entry tickets and private transfers.',
+        shortDesc: 'Guided visit with licensed private Egyptologist, entry tickets and private transfers.',
+        fullOverview: 'Experience this historic Nile monument with your personal licensed Egyptologist guide.',
+        duration: '3 Hours',
+        price: 55,
+        priceUnit: 'per person',
+        image: 'assets/egypt-temple.webp',
+        enabled: true,
+        canAddToJourney: true
+      });
+      await saveAndRefresh(containerSelector, 'تم إضافة مزار جديد');
+      openSightDrawer(st, 0, containerSelector);
+    });
+
+    $$('[data-quick-sight-price]').forEach(inp => {
+      inp.addEventListener('change', async () => {
+        const idx = Number(inp.dataset.quickSightPrice);
+        if (st.sightseeingPlaces?.[idx]) {
+          st.sightseeingPlaces[idx].price = Number(inp.value) || 0;
+          await saveAndRefresh(containerSelector, 'تم تحديث السعر فوراً');
+        }
+      });
+    });
+
+    $$('[data-quick-sight-toggle]').forEach(chk => {
+      chk.addEventListener('change', async () => {
+        const idx = Number(chk.dataset.quickSightToggle);
+        if (st.sightseeingPlaces?.[idx]) {
+          st.sightseeingPlaces[idx].enabled = chk.checked;
+          await saveAndRefresh(containerSelector, chk.checked ? 'تم تفعيل المزار' : 'تم إخفاء المزار');
+        }
+      });
+    });
+
+    $$('[data-open-sight-drawer]').forEach(btn => {
+      btn.addEventListener('click', () => openSightDrawer(st, Number(btn.dataset.openSightDrawer), containerSelector));
+    });
+
+    $$('[data-delete-sight]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const idx = Number(btn.dataset.deleteSight);
+        const ok = await openConfirmDialog({ title: 'حذف المزار', message: `حذف "${st.sightseeingPlaces?.[idx]?.title}" من الموقع؟` });
+        if (!ok) return;
+        st.sightseeingPlaces.splice(idx, 1);
+        await saveAndRefresh(containerSelector, 'تم حذف المزار');
+      });
+    });
+
+    // Add-ons quick actions + drawer
+    $('#btn-add-addon')?.addEventListener('click', async () => {
+      st.addons.unshift({
+        id: 'addon-' + Date.now(),
+        title: 'New Program Extension / Add-on',
+        type: 'program-extension',
+        category: 'Other Program Extension',
+        duration: '+2 Days / 1 Night',
+        price: 290,
+        priceUnit: 'per person',
+        summary: 'Extend your Nile cruise seamlessly.',
+        image: 'assets/egypt-temple.webp',
+        enabled: true,
+        showOnHome: false
+      });
+      await saveAndRefresh(containerSelector, 'تم إضافة Add-on جديد');
+      openAddonDrawer(st, 0, containerSelector);
+    });
+
+    $$('[data-quick-addon-price]').forEach(inp => {
+      inp.addEventListener('change', async () => {
+        const idx = Number(inp.dataset.quickAddonPrice);
+        if (st.addons?.[idx]) {
+          st.addons[idx].price = Number(inp.value) || 0;
+          await saveAndRefresh(containerSelector, 'تم تحديث سعر الإضافة');
+        }
+      });
+    });
+
+    $$('[data-quick-addon-toggle]').forEach(chk => {
+      chk.addEventListener('change', async () => {
+        const idx = Number(chk.dataset.quickAddonToggle);
+        if (st.addons?.[idx]) {
+          st.addons[idx].enabled = chk.checked;
+          await saveAndRefresh(containerSelector, chk.checked ? 'تم تفعيل الإضافة' : 'تم إخفاء الإضافة');
+        }
+      });
+    });
+
+    $$('[data-open-addon-drawer]').forEach(btn => {
+      btn.addEventListener('click', () => openAddonDrawer(st, Number(btn.dataset.openAddonDrawer), containerSelector));
     });
 
     $$('[data-delete-addon]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const idx = Number(btn.dataset.deleteAddon);
+        const ok = await openConfirmDialog({ title: 'حذف الإضافة', message: `حذف "${st.addons?.[idx]?.title}"؟` });
+        if (!ok) return;
         st.addons.splice(idx, 1);
-        await CMS.save();
-        showToast('تم حذف الـ Add-on');
+        await saveAndRefresh(containerSelector, 'تم حذف الإضافة');
+      });
+    });
+
+    // FAQs Manager actions
+    $$('[data-faq-scope-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        faqScopeFilter = btn.dataset.faqScopeFilter;
         renderAdmin(containerSelector);
       });
     });
 
-    // 4. Custom Pages Builder events
-    $$('[data-select-page]').forEach(item => {
-      item.addEventListener('click', () => {
-        editingPageId = item.dataset.selectPage;
+    $('#btn-add-faq')?.addEventListener('click', () => openFaqDrawer(st, null, containerSelector));
+
+    $$('[data-open-faq-drawer]').forEach(btn => {
+      btn.addEventListener('click', () => openFaqDrawer(st, Number(btn.dataset.openFaqDrawer), containerSelector));
+    });
+
+    $$('[data-quick-faq-toggle]').forEach(chk => {
+      chk.addEventListener('change', async () => {
+        const idx = Number(chk.dataset.quickFaqToggle);
+        if (st.faqs?.[idx]) {
+          st.faqs[idx].enabled = chk.checked;
+          await saveAndRefresh(containerSelector, chk.checked ? 'تم إظهار السؤال بالموقع' : 'تم إخفاء السؤال');
+        }
+      });
+    });
+
+    $$('[data-move-faq]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const [idxStr, dirStr] = btn.dataset.moveFaq.split(':');
+        const idx = Number(idxStr), dir = Number(dirStr);
+        const target = idx + dir;
+        if (target >= 0 && target < (st.faqs || []).length) {
+          [st.faqs[idx], st.faqs[target]] = [st.faqs[target], st.faqs[idx]];
+          await saveAndRefresh(containerSelector, 'تم تعديل ترتيب السؤال');
+        }
+      });
+    });
+
+    $$('[data-delete-faq]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const idx = Number(btn.dataset.deleteFaq);
+        const ok = await openConfirmDialog({ title: 'حذف السؤال', message: 'هل تريد حذف هذا السؤال من قائمة FAQ؟' });
+        if (!ok) return;
+        st.faqs.splice(idx, 1);
+        await saveAndRefresh(containerSelector, 'تم حذف السؤال');
+      });
+    });
+
+    // Custom Pages Builder
+    $$('[data-select-page]').forEach(el => {
+      el.addEventListener('click', () => {
+        editingPageId = el.dataset.selectPage;
         renderAdmin(containerSelector);
       });
     });
 
-    $('#btn-create-new-page')?.addEventListener('click', async () => {
-      const slug = 'special-egypt-collection-' + Math.floor(10 + Math.random() * 89);
-      const newPage = {
-        id: 'page-' + Date.now(),
-        slug: slug,
-        title: 'New Custom Experience Page',
-        eyebrow: 'BESPOKE COLLECTION',
-        subtitle: 'A custom page created from the Admin Dashboard with curated programs and booking options.',
-        heroImage: 'assets/nile-sailing.webp',
+    $('#btn-add-custom-page')?.addEventListener('click', async () => {
+      const id = 'page-' + Date.now();
+      st.customPages.push({
+        id,
+        slug: 'custom-experience-' + Math.floor(100 + Math.random() * 900),
+        title: 'New Custom Egypt Experience',
+        heroEyebrow: 'TAILOR-MADE COLLECTION',
+        heroSub: 'Describe your new destination, package, or special seasonal offer here.',
+        heroImage: 'assets/egypt-temple.webp',
         enabled: true,
         showOnHome: true,
-        homeCardTag: 'Featured Page',
         showInNavbar: true,
-        navParent: 'top',
-        showInFooter: true,
-        blocks: [
-          {
-            id: 'blk-' + Date.now() + '-1',
-            type: 'editorial',
-            eyebrow: 'WELCOME',
-            heading: 'Crafted around <em>your vision.</em>',
-            body: 'You can edit this text, add cruise programs, showcase add-ons, or embed a booking form directly from the Admin Control Panel.',
-            ctaText: 'Explore Nile Cruises',
-            ctaUrl: 'nile-cruises'
-          },
-          {
-            id: 'blk-' + Date.now() + '-2',
-            type: 'programs-showcase',
-            eyebrow: 'CURATED CRUISES & PROGRAMS',
-            heading: 'Select your <em>sailing program.</em>',
-            sub: 'Each cruise features customizable programs and add-on extensions.',
-            cruiseSlugs: ['luxury-nile-cruise-4-nights', 'luxury-dahabiya-sailing']
-          },
-          {
-            id: 'blk-' + Date.now() + '-3',
-            type: 'booking-form'
-          }
-        ]
-      };
-      if (!Array.isArray(st.customPages)) st.customPages = [];
-      st.customPages.unshift(newPage);
-      editingPageId = newPage.id;
-      await CMS.save();
-      showToast('تم إنشاء صفحة جديدة وتفعيلها في الرئيسية والقائمة العلوية!');
-      renderAdmin(containerSelector);
+        navParent: 'beyond-the-nile',
+        blocks: [{
+          type: 'text-image',
+          eyebrow: 'FEATURED EXPERIENCE',
+          heading: 'Crafted around your curiosity.',
+          body: 'Add custom paragraphs, photos, and call-to-action buttons from the page builder.',
+          image: 'assets/nile-sailing.webp'
+        }]
+      });
+      editingPageId = id;
+      await saveAndRefresh(containerSelector, 'تم إنشاء صفحة جديدة');
     });
 
-    $('#form-save-custom-page')?.addEventListener('submit', async (e) => {
+    $('#adm-page-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const pid = e.target.dataset.pageId;
       const fd = new FormData(e.target);
-      const pid = fd.get('pageId');
-      const pg = (st.customPages || []).find(p => p.id === pid);
+      const pg = st.customPages.find(x => x.id === pid);
       if (!pg) return;
-
       pg.title = fd.get('title');
       pg.slug = slugify(fd.get('slug'));
-      pg.eyebrow = fd.get('eyebrow');
+      pg.heroEyebrow = fd.get('heroEyebrow');
+      pg.navParent = fd.get('navParent');
       pg.heroImage = fd.get('heroImage');
-      pg.subtitle = fd.get('subtitle');
+      pg.heroSub = fd.get('heroSub');
       pg.enabled = fd.get('enabled') === 'on';
-      pg.showOnHome = fd.get('showOnHome') === 'on';
       pg.showInNavbar = fd.get('showInNavbar') === 'on';
-      pg.showInFooter = fd.get('showInFooter') === 'on';
-      pg.navParent = fd.get('navParent') || 'top';
-      pg.homeCardTag = fd.get('homeCardTag') || 'Special Collection';
+      pg.showOnHome = fd.get('showOnHome') === 'on';
 
-      await CMS.save();
-      showToast('تم حفظ إعدادات الصفحة ومكان ظهورها');
-      renderAdmin(containerSelector);
+      pg.blocks = (pg.blocks || []).map((_, bIdx) => {
+        const type = fd.get(`blk_type_${bIdx}`) || 'text-image';
+        const heading = fd.get(`blk_heading_${bIdx}`) || '';
+        if (type === 'cards-grid') {
+          const items = String(fd.get(`blk_items_${bIdx}`) || '').split(/\r?\n/).filter(Boolean).map(line => {
+            const p = line.split('|');
+            return { title: (p[0] || '').trim(), desc: (p[1] || '').trim() };
+          });
+          return { type, heading, items };
+        }
+        if (type === 'cta-banner') {
+          return { type, heading, body: fd.get(`blk_body_${bIdx}`) || '', btnText: fd.get(`blk_btnText_${bIdx}`) || 'Explore', btnUrl: fd.get(`blk_btnUrl_${bIdx}`) || 'plan-your-journey' };
+        }
+        return { type, eyebrow: fd.get(`blk_eyebrow_${bIdx}`) || '', heading, image: fd.get(`blk_image_${bIdx}`) || '', body: fd.get(`blk_body_${bIdx}`) || '' };
+      });
+      await saveAndRefresh(containerSelector, `تم حفظ صفحة "${pg.title}"`);
     });
 
     $$('[data-delete-page]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const pid = btn.dataset.deletePage;
-        st.customPages = (st.customPages || []).filter(p => p.id !== pid);
-        editingPageId = st.customPages[0]?.id || null;
-        await CMS.save();
-        showToast('تم حذف الصفحة');
-        renderAdmin(containerSelector);
+        const ok = await openConfirmDialog({ title: 'حذف الصفحة', message: 'هل تريد حذف هذه الصفحة المخصصة؟' });
+        if (!ok) return;
+        st.customPages = st.customPages.filter(x => x.id !== btn.dataset.deletePage);
+        editingPageId = null;
+        await saveAndRefresh(containerSelector, 'تم حذف الصفحة');
       });
     });
 
-    $('#btn-add-page-block')?.addEventListener('click', async (e) => {
-      const pid = e.currentTarget.dataset.pageId;
-      const pg = (st.customPages || []).find(p => p.id === pid);
+    $('#btn-add-page-block')?.addEventListener('click', async () => {
+      const pg = st.customPages.find(x => x.id === $('#btn-add-page-block').dataset.pageId);
+      const t = $('#new-block-type')?.value || 'text-image';
       if (!pg) return;
-      const type = $('#sel-new-block-type')?.value || 'editorial';
-      if (!Array.isArray(pg.blocks)) pg.blocks = [];
-
-      const defaultsByType = {
-        editorial: { id: 'blk-' + Date.now(), type: 'editorial', eyebrow: 'SECTION', heading: 'Discover more <em>along the Nile.</em>', body: 'Write your custom editorial content here.', ctaText: 'Explore Cruises', ctaUrl: 'nile-cruises' },
-        'programs-showcase': { id: 'blk-' + Date.now(), type: 'programs-showcase', eyebrow: 'CRUISES & PROGRAMS', heading: 'Featured <em>Sailing Programs.</em>', sub: 'Click any vessel to view its programs and add-ons.', cruiseSlugs: ['luxury-nile-cruise-4-nights', 'deluxe-nile-cruise-3-nights', 'luxury-dahabiya-sailing'] },
-        'addons-showcase': { id: 'blk-' + Date.now(), type: 'addons-showcase', eyebrow: 'ENHANCE YOUR TRIP', heading: 'Optional Add-ons & <em>Extensions.</em>', sub: 'Available when booking any program.' },
-        highlights: { id: 'blk-' + Date.now(), type: 'highlights', eyebrow: 'KEY FEATURES', heading: 'Why travellers <em>choose this.</em>', items: [{ num: '01', title: 'Private Egyptologist', text: 'Dedicated guide throughout your trip.' }, { num: '02', title: 'Flexible Add-ons', text: 'Combine Cairo, Abu Simbel and Red Sea.' }, { num: '03', title: 'VIP Transfers', text: 'Seamless airport meet-and-assist.' }] },
-        faq: { id: 'blk-' + Date.now(), type: 'faq', eyebrow: 'QUESTIONS', heading: 'Frequently Asked <em>Questions.</em>', items: [{ q: 'Can I add Cairo or Abu Simbel to this program?', a: 'Yes, you can select any extension add-on directly in the booking form.' }, { q: 'How do I confirm my cabin?', a: 'Submit the reservation form and our concierge confirms availability within 2 hours.' }] },
-        'booking-form': { id: 'blk-' + Date.now(), type: 'booking-form' }
-      };
-
-      pg.blocks.push(defaultsByType[type]);
-      await CMS.save();
-      showToast('تم إضافة قسم جديد داخل الصفحة');
-      renderAdmin(containerSelector);
+      if (t === 'cards-grid') pg.blocks.push({ type: 'cards-grid', heading: 'Highlights', items: [{ title: 'Feature One', desc: 'Details...' }] });
+      else if (t === 'cta-banner') pg.blocks.push({ type: 'cta-banner', heading: 'Ready to book?', body: 'Speak with our designers.', btnText: 'Plan Journey', btnUrl: 'plan-your-journey' });
+      else pg.blocks.push({ type: 'text-image', eyebrow: 'SECTION', heading: 'New Content Section', body: 'Write details here.', image: 'assets/egypt-temple.webp' });
+      await saveAndRefresh(containerSelector, 'تم إضافة البلوك');
     });
 
-    $$('[data-save-block]').forEach(form => {
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const bIdx = Number(form.dataset.saveBlock);
-        const pid = form.dataset.pageId;
-        const pg = (st.customPages || []).find(p => p.id === pid);
-        const blk = pg?.blocks?.[bIdx];
-        if (!blk) return;
-
-        const fd = new FormData(form);
-        if (blk.type === 'editorial') {
-          blk.eyebrow = fd.get('eyebrow');
-          blk.heading = fd.get('heading');
-          blk.body = fd.get('body');
-          blk.ctaText = fd.get('ctaText');
-          blk.ctaUrl = fd.get('ctaUrl');
-        } else if (blk.type === 'programs-showcase') {
-          blk.eyebrow = fd.get('eyebrow');
-          blk.heading = fd.get('heading');
-          blk.sub = fd.get('sub');
-          blk.cruiseSlugs = fd.getAll('cruiseSlugs');
-        } else if (blk.type === 'highlights') {
-          blk.eyebrow = fd.get('eyebrow');
-          blk.heading = fd.get('heading');
-          blk.items = String(fd.get('itemsText') || '').split('\n').map(l => l.trim()).filter(Boolean).map((l, i) => {
-            const p = l.split('|').map(s => s.trim());
-            return { num: p[0] || `0${i + 1}`, title: p[1] || 'Highlight', text: p[2] || '' };
-          });
-        } else if (blk.type === 'faq') {
-          blk.eyebrow = fd.get('eyebrow');
-          blk.heading = fd.get('heading');
-          blk.items = String(fd.get('faqText') || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
-            const p = l.split('|').map(s => s.trim());
-            return { q: p[0] || 'Question', a: p[1] || '' };
-          });
+    $$('[data-delete-block]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const pg = st.customPages.find(x => x.id === editingPageId);
+        if (pg) {
+          pg.blocks.splice(Number(btn.dataset.deleteBlock), 1);
+          await saveAndRefresh(containerSelector, 'تم حذف البلوك');
         }
-
-        await CMS.save();
-        showToast('تم حفظ محتوى القسم');
-        renderAdmin(containerSelector);
       });
     });
 
     $$('[data-move-block]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const idx = Number(btn.dataset.moveBlock);
-        const dir = Number(btn.dataset.dir);
-        const pid = btn.dataset.pageId;
-        const pg = (st.customPages || []).find(p => p.id === pid);
-        if (!pg || !pg.blocks) return;
+        const pg = st.customPages.find(x => x.id === editingPageId);
+        const [idxStr, dirStr] = btn.dataset.moveBlock.split(':');
+        const idx = Number(idxStr), dir = Number(dirStr);
         const target = idx + dir;
-        if (target < 0 || target >= pg.blocks.length) return;
-        const temp = pg.blocks[idx];
-        pg.blocks[idx] = pg.blocks[target];
-        pg.blocks[target] = temp;
-        await CMS.save();
-        renderAdmin(containerSelector);
+        if (pg && target >= 0 && target < pg.blocks.length) {
+          [pg.blocks[idx], pg.blocks[target]] = [pg.blocks[target], pg.blocks[idx]];
+          await saveAndRefresh(containerSelector, 'تم تحديث ترتيب البلوك');
+        }
       });
     });
 
-    $$('[data-del-block]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const idx = Number(btn.dataset.delBlock);
-        const pid = btn.dataset.pageId;
-        const pg = (st.customPages || []).find(p => p.id === pid);
-        if (!pg || !pg.blocks) return;
-        pg.blocks.splice(idx, 1);
-        await CMS.save();
-        showToast('تم حذف القسم من الصفحة');
-        renderAdmin(containerSelector);
-      });
-    });
-
-    // 5. Homepage Controller events
-    $('#form-save-home-hero')?.addEventListener('submit', async (e) => {
+    // Homepage Hero + Sections (heroVideo fixed!)
+    $('#adm-home-hero-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
       st.homeConfig = {
@@ -1552,43 +2084,80 @@ window.NileTrailsAdmin = (() => {
         primaryBtnUrl: fd.get('primaryBtnUrl'),
         secondaryBtnText: fd.get('secondaryBtnText'),
         secondaryBtnUrl: fd.get('secondaryBtnUrl'),
-        heroImage: fd.get('heroImage')
+        heroImage: fd.get('heroImage'),
+        heroVideo: fd.get('heroVideo')
       };
-      await CMS.save();
-      showToast('تم حفظ بانر الصفحة الرئيسية');
+      await saveAndRefresh(containerSelector, 'تم حفظ واجهة وفيديو الصفحة الرئيسية');
     });
 
-    $$('[data-toggle-homesec]').forEach(chk => {
+    $$('[data-toggle-section]').forEach(chk => {
       chk.addEventListener('change', async () => {
-        const idx = Number(chk.dataset.toggleHomesec);
-        if (st.homeConfig?.sections?.[idx]) {
-          st.homeConfig.sections[idx].enabled = chk.checked;
-          await CMS.save();
-          showToast('تم تحديث أقسام الصفحة الرئيسية');
-          renderAdmin(containerSelector);
+        const idx = Number(chk.dataset.toggleSection);
+        st.homeConfig.sectionsOrder[idx].enabled = chk.checked;
+        await saveAndRefresh(containerSelector, 'تم تحديث ظهور القسم');
+      });
+    });
+
+    $$('[data-move-section]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const [idxStr, dirStr] = btn.dataset.moveSection.split(':');
+        const idx = Number(idxStr), dir = Number(dirStr);
+        const list = st.homeConfig.sectionsOrder;
+        const target = idx + dir;
+        if (target >= 0 && target < list.length) {
+          [list[idx], list[target]] = [list[target], list[idx]];
+          await saveAndRefresh(containerSelector, 'تم تحديث ترتيب الصفحة الرئيسية');
         }
       });
     });
 
-    $$('[data-move-homesec]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const idx = Number(btn.dataset.moveHomesec);
-        const dir = Number(btn.dataset.dir);
-        const secs = st.homeConfig?.sections;
-        if (!secs) return;
-        const target = idx + dir;
-        if (target < 0 || target >= secs.length) return;
-        const temp = secs[idx];
-        secs[idx] = secs[target];
-        secs[target] = temp;
-        await CMS.save();
-        showToast('تم تغيير ترتيب القسم في الصفحة الرئيسية');
+    // Collections subtab + actions
+    $$('[data-coll-subtab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        collectionSubTab = btn.dataset.collSubtab;
         renderAdmin(containerSelector);
       });
     });
 
-    // 6. Settings events
-    $('#form-save-settings')?.addEventListener('submit', async (e) => {
+    $('#btn-add-collection-item')?.addEventListener('click', async () => {
+      const k = collectionSubTab;
+      if (k === 'stories') st.stories.unshift({ slug: 'story-' + Date.now(), title: 'New Nile Journal Story', category: 'Travel Tips', date: '2026', image: 'assets/egypt-temple.webp', excerpt: 'Discover timeless Egypt...', enabled: true, showOnHome: true });
+      else if (k === 'destinations') st.destinations.unshift({ slug: 'dest-' + Date.now(), name: 'New Region', role: 'EGYPTIAN HERITAGE', desc: 'Explore beyond the Nile...', image: 'assets/egypt-temple.webp', enabled: true, showOnHome: true });
+      else st.journeys.unshift({ slug: 'journey-' + Date.now(), name: 'New Egypt Package', duration: '8 Nights', route: 'Cairo · Nile', image: 'assets/nile-sailing.webp', sub: 'Signature tailored itinerary', enabled: true, showOnHome: true });
+      await saveAndRefresh(containerSelector, 'تم إضافة العنصر بنجاح');
+      openCollectionDrawer(st, k, 0, containerSelector);
+    });
+
+    $$('[data-quick-coll-toggle]').forEach(chk => {
+      chk.addEventListener('change', async () => {
+        const [k, idxStr] = chk.dataset.quickCollToggle.split(':');
+        const item = st[k]?.[Number(idxStr)];
+        if (item) {
+          item.enabled = chk.checked;
+          await saveAndRefresh(containerSelector, chk.checked ? 'تم التفعيل' : 'تم الإخفاء');
+        }
+      });
+    });
+
+    $$('[data-open-coll-drawer]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const [k, idxStr] = btn.dataset.openCollDrawer.split(':');
+        openCollectionDrawer(st, k, Number(idxStr), containerSelector);
+      });
+    });
+
+    $$('[data-delete-coll]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const [k, idxStr] = btn.dataset.deleteColl.split(':');
+        const ok = await openConfirmDialog({ title: 'حذف العنصر', message: 'هل تريد حذف هذا العنصر؟' });
+        if (!ok) return;
+        st[k].splice(Number(idxStr), 1);
+        await saveAndRefresh(containerSelector, 'تم الحذف');
+      });
+    });
+
+    // Global Settings + Import/Export/Reset
+    $('#adm-settings-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
       st.settings = {
@@ -1598,26 +2167,47 @@ window.NileTrailsAdmin = (() => {
         currencySymbol: fd.get('currencySymbol'),
         contactEmail: fd.get('contactEmail'),
         contactPhone: fd.get('contactPhone'),
+        youtubeHeroUrl: fd.get('youtubeHeroUrl'),
         showAdminBar: fd.get('showAdminBar') === 'on'
       };
-      await CMS.save();
-      showToast('تم حفظ الإعدادات العامة');
+      await saveAndRefresh(containerSelector, 'تم حفظ الإعدادات العامة');
     });
 
     $('#btn-export-cms')?.addEventListener('click', () => {
       const blob = new Blob([JSON.stringify(st, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'niletrails-cms-backup.json';
+      a.download = `niletrails-cms-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
+      showToast('تم تحميل النسخة الاحتياطية');
+    });
+
+    $('#inp-import-cms')?.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const txt = await file.text();
+        const parsed = JSON.parse(txt);
+        if (!parsed || typeof parsed !== 'object') throw new Error('ملف JSON غير صالح');
+        await CMS.setState({ ...CMS.DEFAULT_DATA, ...parsed });
+        showToast('تم استيراد النسخة الاحتياطية وتطبيقها');
+        renderAdmin(containerSelector);
+      } catch (err) {
+        showToast(err.message || 'فشل قراءة الملف', 'error');
+      }
     });
 
     $('#btn-reset-cms')?.addEventListener('click', async () => {
-      if (confirm('هل أنت متأكد من استعادة البيانات الافتراضية للموقع؟')) {
-        await CMS.resetToDefaults();
-        showToast('تم استعادة الضبط الافتراضي');
-        renderAdmin(containerSelector);
-      }
+      const ok = await openConfirmDialog({
+        title: 'استعادة الإعدادات الافتراضية',
+        message: 'تحذير: سيؤدي هذا إلى إعادة كافة البرامج والأسعار والمزارات إلى ضبط المصنع الأصلي.',
+        confirmLabel: 'نعم، استعادة الافتراضي',
+        cancelLabel: 'إلغاء'
+      });
+      if (!ok) return;
+      await CMS.resetToDefaults();
+      showToast('تم استعادة الضبط الافتراضي');
+      renderAdmin(containerSelector);
     });
   }
 

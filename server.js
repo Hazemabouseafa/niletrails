@@ -5,10 +5,14 @@ const path = require('path');
 const PORT = process.env.PORT || 1111;
 const BASE_DIR = __dirname;
 const DATA_DIR = path.join(BASE_DIR, 'data');
+const UPLOAD_DIR = path.join(BASE_DIR, 'assets', 'uploads');
 const CMS_FILE = path.join(DATA_DIR, 'cms.json');
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
 const MIME_TYPES = {
@@ -20,6 +24,7 @@ const MIME_TYPES = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
+  '.gif': 'image/gif',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.mp4': 'video/mp4',
@@ -31,12 +36,12 @@ const MIME_TYPES = {
   '.md': 'text/markdown; charset=utf-8'
 };
 
-function readBody(req) {
+function readBody(req, maxBytes = 15 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let body = '';
     req.on('data', chunk => {
       body += chunk.toString();
-      if (body.length > 10 * 1024 * 1024) {
+      if (body.length > maxBytes) {
         reject(new Error('Payload too large'));
       }
     });
@@ -126,6 +131,34 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, { ok: true });
     } catch (e) {
       sendJson(res, 500, { error: e.message });
+    }
+    return;
+  }
+
+  if (urlPath === '/api/upload' && req.method === 'POST') {
+    try {
+      const body = await readBody(req, 15 * 1024 * 1024);
+      const parsed = JSON.parse(body || '{}');
+      const rawName = String(parsed.filename || 'upload.jpg');
+      const ext = path.extname(rawName).toLowerCase();
+      const allowed = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.mp4', '.webm']);
+      if (!allowed.has(ext)) {
+        sendJson(res, 400, { error: 'Unsupported media file type' });
+        return;
+      }
+      const cleanBase = path.basename(rawName, ext).toLowerCase().replace(/[^a-z0-9-_]+/g, '-').slice(0, 48) || 'media';
+      const safeName = `${Date.now()}-${cleanBase}${ext}`;
+      const rawData = String(parsed.dataBase64 || '');
+      const base64Payload = rawData.includes(',') ? rawData.split(',')[1] : rawData;
+      if (!base64Payload) {
+        sendJson(res, 400, { error: 'Missing file payload' });
+        return;
+      }
+      const targetPath = path.join(UPLOAD_DIR, safeName);
+      fs.writeFileSync(targetPath, Buffer.from(base64Payload, 'base64'));
+      sendJson(res, 201, { ok: true, url: `assets/uploads/${safeName}` });
+    } catch (e) {
+      sendJson(res, 400, { error: e.message });
     }
     return;
   }
