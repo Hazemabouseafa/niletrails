@@ -1365,7 +1365,10 @@ window.NileTrailsCMS = (() => {
         body1: 'All Nile cruise, dahabiya, and sightseeing quotations remain subject to seasonal cabin availability until confirmed by our concierge team.'
       }
     },
-    faqs: JSON.parse(JSON.stringify(DEFAULT_FAQS))
+    faqs: JSON.parse(JSON.stringify(DEFAULT_FAQS)),
+    textOverrides: {},
+    domEdits: {},
+    deletedElementTypes: []
   };
 
   let state = JSON.parse(JSON.stringify(DEFAULT_DATA));
@@ -1376,6 +1379,15 @@ window.NileTrailsCMS = (() => {
     }
     if (!Array.isArray(targetState.faqs) || !targetState.faqs.length) {
       targetState.faqs = JSON.parse(JSON.stringify(DEFAULT_FAQS));
+    }
+    if (!targetState.textOverrides || typeof targetState.textOverrides !== 'object' || Array.isArray(targetState.textOverrides)) {
+      targetState.textOverrides = {};
+    }
+    if (!targetState.domEdits || typeof targetState.domEdits !== 'object' || Array.isArray(targetState.domEdits)) {
+      targetState.domEdits = {};
+    }
+    if (!Array.isArray(targetState.deletedElementTypes)) {
+      targetState.deletedElementTypes = [];
     }
     const baseSettings = JSON.parse(JSON.stringify(DEFAULT_DATA.settings));
     targetState.settings = {
@@ -1445,17 +1457,26 @@ window.NileTrailsCMS = (() => {
     return state;
   }
 
-  async function saveToServer() {
+  let saveQueue = Promise.resolve();
+  function saveToServer() {
+    const payload = JSON.stringify(state);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      await fetch('/api/cms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(state)
-      });
+      localStorage.setItem(STORAGE_KEY, payload);
     } catch (e) {
-      console.warn('Saved to localStorage (server sync skipped):', e);
+      console.warn('Saved to localStorage failed:', e);
     }
+    saveQueue = saveQueue
+      .then(() =>
+        fetch('/api/cms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload
+        })
+      )
+      .catch((e) => {
+        console.warn('Saved to localStorage (server sync skipped):', e);
+      });
+    return saveQueue;
   }
 
   async function submitEnquiry(enquiryObj) {

@@ -2366,12 +2366,12 @@ dialog.adm-confirm-dialog {
 .nt-live-toolbar {
   background: #092434;
   color: #fff;
-  padding: 9px 24px;
+  padding: 6px 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px;
   font-family: 'Cairo', var(--ui);
   border-bottom: 2px solid var(--gold);
   direction: rtl;
@@ -2379,16 +2379,16 @@ dialog.adm-confirm-dialog {
 .nt-live-toolbar-status {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   flex-wrap: wrap;
-  font-size: 13px;
+  font-size: 12px;
 }
-.nt-live-toolbar-status strong { color: #f3d7a3; }
-.nt-live-toolbar-status small { color: #bfd1db; font-size: 12px; }
+.nt-live-toolbar-status strong { color: #f3d7a3; white-space: nowrap; }
+.nt-live-toolbar-status small { color: #bfd1db; font-size: 11px; }
 .nt-live-toolbar-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   flex-wrap: wrap;
 }
 .nt-live-sec {
@@ -2434,16 +2434,17 @@ dialog.adm-confirm-dialog {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  min-height: 32px;
-  padding: 4px 11px;
+  gap: 4px;
+  min-height: 29px;
+  padding: 3px 9px;
   border-radius: 5px;
   border: 1px solid rgba(255, 255, 255, 0.25);
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
   font-family: 'Cairo', var(--ui);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
+  white-space: nowrap;
   transition: 0.15s;
 }
 .nt-live-btn:hover { background: rgba(255, 255, 255, 0.22); }
@@ -2668,18 +2669,33 @@ dialog.adm-confirm-dialog {
   direction: rtl;
   font-family: 'Cairo', var(--ui);
 }
+nt-tx {
+  display: inline;
+}
+.nav-group:has([contenteditable="true"]) .mega-menu {
+  display: block;
+}
 [data-live-text] {
-  outline: 1.5px dashed rgba(199, 163, 106, 0.65);
+  outline: 1.5px dashed rgba(199, 163, 106, 0.55);
   outline-offset: 3px;
   border-radius: 3px;
   cursor: text;
   transition: outline-color 0.15s, background 0.15s;
 }
-[data-live-text]:hover {
-  outline: 2px solid var(--gold);
-  background: rgba(199, 163, 106, 0.12);
+[data-utx-key] {
+  outline: 1.5px dashed transparent;
+  outline-offset: 2px;
+  border-radius: 3px;
+  cursor: text;
+  transition: outline-color 0.15s, background 0.15s;
 }
-[data-live-text].nt-live-editing-now {
+[data-live-text]:hover,
+[data-utx-key]:hover {
+  outline: 2px solid var(--gold);
+  background: rgba(199, 163, 106, 0.14);
+}
+[data-live-text].nt-live-editing-now,
+[data-utx-key].nt-live-editing-now {
   outline: 2.5px solid #e3b973;
   background: rgba(255, 253, 246, 0.96);
   color: #092434 !important;
@@ -2772,7 +2788,154 @@ dialog.adm-confirm-dialog {
   border-radius: 50%;
   display: inline-block;
 }
+.nt-el-hover-target {
+  outline: 2px dashed #c7a36a !important;
+  outline-offset: 2px;
+}
+.nt-el-locked-target {
+  outline: 2.5px solid #0d9488 !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.16);
+}
+.nt-el-studio-bar {
+  position: fixed;
+  z-index: 960;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #092434;
+  border: 1.5px solid #c7a36a;
+  color: #fff;
+  box-shadow: 0 10px 28px rgba(9, 32, 46, 0.34);
+  font-family: 'Cairo', var(--ui);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.nt-el-studio-bar[hidden] { display: none !important; }
+.nt-el-kind {
+  color: #f3d7a3;
+  font-weight: 800;
+  padding: 0 6px 0 4px;
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
+}
+.nt-el-studio-bar button {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'Cairo', var(--ui);
+  cursor: pointer;
+  transition: 0.15s;
+}
+.nt-el-studio-bar button:hover {
+  background: #c7a36a;
+  color: #092434;
+  border-color: #c7a36a;
+}
+.nt-el-studio-bar button.is-danger {
+  background: rgba(220, 38, 38, 0.22);
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #fecaca;
+}
+.nt-el-studio-bar button.is-danger:hover {
+  background: #dc2626;
+  color: #fff;
+  border-color: #dc2626;
+}
+.nt-deleted-pop {
+  min-width: min(370px, 92vw);
+  max-height: 62vh;
+  overflow-y: auto;
+}
+.nt-deleted-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+.nt-deleted-row:last-child { border-bottom: 0; }
+.nt-deleted-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.nt-deleted-meta b {
+  font-size: 12px;
+  color: #f3d7a3;
+}
+.nt-deleted-meta small {
+  font-size: 11px;
+  color: #d6e4ec;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nt-deleted-meta em {
+  font-style: normal;
+  font-size: 10px;
+  color: #9bb4c3;
+}
+.nt-live-list-add-wrap {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-start;
+  grid-column: 1 / -1;
+}
+.nt-live-list-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1.5px dashed #c7a36a;
+  background: rgba(199, 163, 106, 0.11);
+  color: #092434;
+  font-family: 'Cairo', var(--ui);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: 0.16s;
+}
+.nt-live-list-add:hover {
+  background: #c7a36a;
+  color: #fff;
+  border-style: solid;
+}
+.adm-toast-act {
+  margin-inline-start: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #f3d7a3;
+  background: rgba(199, 163, 106, 0.28);
+  color: #fff;
+  font-family: 'Cairo', var(--ui);
+  font-size: 11.5px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.adm-toast-act:hover {
+  background: #c7a36a;
+  color: #092434;
+}
+.site-header.is-live-edit ~ #main .nct-subnav { top: var(--nt-hdr-h, 132px); }
+.site-header.is-live-edit ~ #main .nct-aside-sticky {
+  top: calc(var(--nt-hdr-h, 132px) + 56px);
+  max-height: calc(100dvh - var(--nt-hdr-h, 132px) - 64px);
+}
+@media (max-width: 1024px) {
+  .site-header.is-live-edit ~ #main .nct-subnav { top: var(--nt-hdr-h, 134px); }
+}
 @media (max-width: 700px) {
+  .site-header.is-live-edit ~ #main .nct-subnav { position: static; }
   .nt-live-toolbar {
     padding: 8px 10px;
   }

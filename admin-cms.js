@@ -114,8 +114,243 @@ window.NileTrailsAdmin = (() => {
     if (String(curVal ?? '') === String(newValue ?? '')) return false;
     const beforeSnap = captureSnapshot();
     if (!setPathValue(st, rawPath, newValue)) return false;
-    await finishSave(typeof onDone === 'function' ? onDone : () => {}, 'تم حفظ النص مباشرة ✓', beforeSnap);
+    await finishSave(typeof onDone === 'function' ? onDone : null, 'تم حفظ النص مباشرة ✓', beforeSnap);
     return true;
+  }
+
+  function getTextOverride(key) {
+    const ov = CMS.getState().textOverrides;
+    return ov && typeof ov === 'object' ? ov[key] : undefined;
+  }
+
+  async function saveTextOverride(key, newValue, onDone) {
+    if (!key) return false;
+    const st = CMS.getState();
+    if (!st.textOverrides || typeof st.textOverrides !== 'object') st.textOverrides = {};
+    const curVal = st.textOverrides[key];
+    if (String(curVal ?? '') === String(newValue ?? '')) return false;
+    const beforeSnap = captureSnapshot();
+    st.textOverrides[key] = newValue;
+    await finishSave(typeof onDone === 'function' ? onDone : null, 'تم حفظ النص مباشرة ✓', beforeSnap);
+    return true;
+  }
+
+  function extractItemPreview(val) {
+    if (typeof val === 'string') return val.replace(/\s+/g, ' ').trim().slice(0, 56);
+    if (val && typeof val === 'object') {
+      return String(val.title || val.name || val.question || val.stop || val.heading || val.day || '').replace(/\s+/g, ' ').trim().slice(0, 56);
+    }
+    return '';
+  }
+
+  function cloneSampleForList(sample, listPath, existingArr) {
+    const uid = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    if (typeof sample === 'string') {
+      const cleanBase = sample.replace(/\s*\(جديد.*?\)\s*$|\s*\(New(?:\s+\d+)?\)\s*$/i, '').trim() || 'New Item';
+      return `${cleanBase} (New)`;
+    }
+    if (!sample || typeof sample !== 'object') return sample;
+    const copy = JSON.parse(JSON.stringify(sample));
+    if (Object.prototype.hasOwnProperty.call(copy, 'id')) {
+      const prefix = String(copy.id || 'item').split('-')[0].slice(0, 10) || 'item';
+      copy.id = `${prefix}-${uid}`;
+    }
+    if (Object.prototype.hasOwnProperty.call(copy, 'slug')) {
+      const cleanSlug = String(copy.slug || 'item').replace(/-[a-z0-9]{4,8}$/i, '').slice(0, 32);
+      copy.slug = `${cleanSlug}-${uid.slice(-4)}`;
+    }
+    if (String(listPath).endsWith('.itinerary')) {
+      const nextNum = (Array.isArray(existingArr) ? existingArr.length : 0) + 1;
+      const baseTitle = String(copy.title || 'Sailing & Excursions').replace(/^Day\s*\d+\s*[—:-]?\s*/i, '').replace(/\s*\(New\)\s*$/i, '').trim();
+      copy.day = `Day ${nextNum}`;
+      copy.title = `Day ${nextNum} — ${baseTitle || 'New Day'}`;
+    } else if (typeof copy.title === 'string') {
+      copy.title = copy.title.replace(/\s*\(New\)\s*$/i, '') + ' (New)';
+    } else if (typeof copy.name === 'string') {
+      copy.name = copy.name.replace(/\s*\(New\)\s*$/i, '') + ' (New)';
+    } else if (typeof copy.question === 'string') {
+      copy.question = copy.question.replace(/\s*\(New\)\s*$/i, '') + ' (New)';
+    } else if (typeof copy.stop === 'string') {
+      copy.stop = copy.stop.replace(/\s*\(New\)\s*$/i, '') + ' (New)';
+    }
+    if (String(listPath).endsWith('.programs')) {
+      copy.tabLabel = (copy.tabLabel || copy.duration || 'Custom').replace(/\s*\(New\)\s*$/i, '') + ' (New)';
+    }
+    if (Array.isArray(copy.programs)) {
+      copy.programs = copy.programs.map((pr, i) => ({
+        ...pr,
+        id: `${copy.id || 'v'}-p${i}-${uid.slice(-4)}`,
+        slug: `${String(pr.slug || 'program').slice(0, 28)}-${uid.slice(-4)}-${i}`
+      }));
+    }
+    return copy;
+  }
+
+  function resolveOrInitList(st, listPath, fallbackData) {
+    let arr = getPathValue(st, listPath);
+    if (!Array.isArray(arr) && Array.isArray(fallbackData)) {
+      setPathValue(st, listPath, JSON.parse(JSON.stringify(fallbackData)));
+      arr = getPathValue(st, listPath);
+    }
+    return Array.isArray(arr) ? arr : null;
+  }
+
+  function findListItemIndex(arr, itemKey) {
+    if (!Array.isArray(arr)) return -1;
+    const key = String(itemKey ?? '');
+    if (key.startsWith('idx:')) {
+      const n = Number(key.slice(4));
+      return Number.isInteger(n) && n >= 0 && n < arr.length ? n : -1;
+    }
+    if (key.startsWith('id:')) {
+      const targetId = key.slice(3);
+      return arr.findIndex(x => x && (String(x.id) === targetId || String(x.slug) === targetId));
+    }
+    const n = Number(key);
+    return Number.isInteger(n) && n >= 0 && n < arr.length ? n : arr.findIndex(x => x && (String(x.id) === key || String(x.slug) === key));
+  }
+
+  function pushDeletedTypeEntry(st, entry) {
+    if (!Array.isArray(st.deletedElementTypes)) st.deletedElementTypes = [];
+    st.deletedElementTypes.unshift(entry);
+    if (st.deletedElementTypes.length > 40) st.deletedElementTypes.length = 40;
+  }
+
+  async function deleteListItem(listPath, itemKey, meta = {}, onDone = null) {
+    const st = CMS.getState();
+    const beforeSnap = captureSnapshot();
+    const arr = resolveOrInitList(st, listPath, meta.fallbackData);
+    if (!arr) return null;
+    const idx = findListItemIndex(arr, itemKey);
+    if (idx < 0) return null;
+    const [removed] = arr.splice(idx, 1);
+    const tplEntry = {
+      id: 'dt-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
+      mode: 'list',
+      scope: meta.scope || 'all',
+      listPath,
+      insertIndex: idx,
+      kindLabel: meta.kindLabel || 'عنصر قائمة',
+      previewText: meta.previewText || extractItemPreview(removed),
+      sampleItem: JSON.parse(JSON.stringify(removed)),
+      deletedAt: Date.now()
+    };
+    pushDeletedTypeEntry(st, tplEntry);
+    await finishSave(typeof onDone === 'function' ? onDone : null, `تم حذف "${tplEntry.kindLabel}"`, beforeSnap);
+    return tplEntry;
+  }
+
+  async function addListItemOfType(listPath, itemKey, meta = {}, onDone = null) {
+    const st = CMS.getState();
+    const beforeSnap = captureSnapshot();
+    const arr = resolveOrInitList(st, listPath, meta.fallbackData);
+    if (!arr) return false;
+    const idx = itemKey !== null && itemKey !== undefined ? findListItemIndex(arr, itemKey) : -1;
+    const sample = idx >= 0 ? arr[idx] : (meta.sampleItem !== undefined ? meta.sampleItem : arr[arr.length - 1]);
+    if (sample === undefined) return false;
+    const newItem = cloneSampleForList(sample, listPath, arr);
+    const insertAt = idx >= 0 ? idx + 1 : arr.length;
+    arr.splice(insertAt, 0, newItem);
+    await finishSave(typeof onDone === 'function' ? onDone : null, `تم إضافة "${meta.kindLabel || 'عنصر جديد'}" من نفس النوع ✓`, beforeSnap);
+    return newItem;
+  }
+
+  async function recordDomDelete(payload, onDone = null) {
+    if (!payload || !payload.targetSel || !payload.regionKey) return null;
+    const st = CMS.getState();
+    const beforeSnap = captureSnapshot();
+    if (!st.domEdits || typeof st.domEdits !== 'object') st.domEdits = {};
+    if (!Array.isArray(st.domEdits[payload.regionKey])) st.domEdits[payload.regionKey] = [];
+    const uid = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    st.domEdits[payload.regionKey].push({
+      id: 'de-' + uid,
+      op: 'delete',
+      targetSel: payload.targetSel,
+      ts: Date.now()
+    });
+    const tplEntry = {
+      id: 'dt-' + uid,
+      mode: 'dom',
+      scope: payload.scope || payload.regionKey,
+      regionKey: payload.regionKey,
+      targetSel: payload.targetSel,
+      parentSel: payload.parentSel || '',
+      kindLabel: payload.kindLabel || 'عنصر صفحة',
+      tagName: payload.tagName || 'DIV',
+      previewText: String(payload.previewText || '').slice(0, 56),
+      cleanHtml: payload.cleanHtml || '',
+      deletedAt: Date.now()
+    };
+    pushDeletedTypeEntry(st, tplEntry);
+    await finishSave(typeof onDone === 'function' ? onDone : null, `تم حذف "${tplEntry.kindLabel}"`, beforeSnap);
+    return tplEntry;
+  }
+
+  async function recordDomDuplicate(payload, onDone = null) {
+    if (!payload || !payload.regionKey || !payload.cleanHtml) return null;
+    const st = CMS.getState();
+    const beforeSnap = captureSnapshot();
+    if (!st.domEdits || typeof st.domEdits !== 'object') st.domEdits = {};
+    if (!Array.isArray(st.domEdits[payload.regionKey])) st.domEdits[payload.regionKey] = [];
+    const uid = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const edit = {
+      id: 'de-' + uid,
+      op: 'insert_after',
+      targetSel: payload.targetSel || '',
+      parentSel: payload.parentSel || '',
+      html: payload.cleanHtml,
+      newId: 'nt-el-' + uid,
+      label: payload.kindLabel || '',
+      ts: Date.now()
+    };
+    st.domEdits[payload.regionKey].push(edit);
+    await finishSave(typeof onDone === 'function' ? onDone : null, `تم إضافة "${payload.kindLabel || 'عنصر'}" من نفس النوع ✓`, beforeSnap);
+    return edit;
+  }
+
+  async function addElementFromDeletedType(typeId, onDone = null) {
+    const st = CMS.getState();
+    const tpl = (st.deletedElementTypes || []).find(t => t.id === typeId);
+    if (!tpl) return false;
+    const beforeSnap = captureSnapshot();
+    if (tpl.mode === 'list') {
+      let arr = getPathValue(st, tpl.listPath);
+      if (!Array.isArray(arr)) {
+        setPathValue(st, tpl.listPath, []);
+        arr = getPathValue(st, tpl.listPath);
+      }
+      if (!Array.isArray(arr)) return false;
+      const newItem = cloneSampleForList(tpl.sampleItem, tpl.listPath, arr);
+      const pos = Math.max(0, Math.min(Number.isFinite(tpl.insertIndex) ? tpl.insertIndex : arr.length, arr.length));
+      arr.splice(pos, 0, newItem);
+      await finishSave(typeof onDone === 'function' ? () => onDone(tpl) : null, `تم إضافة "${tpl.kindLabel}" من نفس النوع ✓`, beforeSnap);
+      return true;
+    }
+    if (tpl.mode === 'dom') {
+      if (!st.domEdits || typeof st.domEdits !== 'object') st.domEdits = {};
+      if (!Array.isArray(st.domEdits[tpl.regionKey])) st.domEdits[tpl.regionKey] = [];
+      const uid = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      st.domEdits[tpl.regionKey].push({
+        id: 'de-' + uid,
+        op: 'insert_template',
+        targetSel: tpl.targetSel || '',
+        parentSel: tpl.parentSel || '',
+        html: tpl.cleanHtml || '',
+        newId: 'nt-el-' + uid,
+        label: tpl.kindLabel || '',
+        ts: Date.now()
+      });
+      await finishSave(typeof onDone === 'function' ? () => onDone(tpl) : null, `تم إضافة "${tpl.kindLabel}" من نفس النوع ✓`, beforeSnap);
+      return true;
+    }
+    return false;
+  }
+
+  async function clearDeletedElementTypes(onDone = null) {
+    const st = CMS.getState();
+    const beforeSnap = captureSnapshot();
+    st.deletedElementTypes = [];
+    await finishSave(typeof onDone === 'function' ? onDone : null, 'تم مسح سجل القوالب المحذوفة', beforeSnap);
   }
 
   const PRESET_VIDEOS = [
@@ -157,6 +392,32 @@ window.NileTrailsAdmin = (() => {
     el.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+  }
+
+  function showActionToast(msg, actionLabel, onAction, tone = 'success') {
+    let el = $('#cms-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'cms-toast';
+      el.className = 'adm-toast';
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
+      document.body.appendChild(el);
+    }
+    el.dataset.tone = tone;
+    el.innerHTML = `<span class="adm-toast-ic">${tone === 'error' ? '!' : '✓'}</span><span>${esc(msg)}</span>${actionLabel ? `<button type="button" class="adm-toast-act">${esc(actionLabel)}</button>` : ''}`;
+    const actBtn = $('.adm-toast-act', el);
+    if (actBtn && typeof onAction === 'function') {
+      actBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        el.classList.remove('show');
+        onAction();
+      }, { once: true });
+    }
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 6500);
   }
 
   async function finishSave(target, msg = 'تم الحفظ والمزامنة مع الموقع', beforeSnap = null) {
@@ -1425,11 +1686,17 @@ window.NileTrailsAdmin = (() => {
   }
 
   function getSubMode() {
-    try { return sessionStorage.getItem(EDIT_SUBMODE_KEY) === 'browse' ? 'browse' : 'select'; } catch { return 'select'; }
+    try {
+      const m = sessionStorage.getItem(EDIT_SUBMODE_KEY);
+      return m === 'browse' || m === 'elements' ? m : 'select';
+    } catch { return 'select'; }
   }
 
   function setSubMode(mode) {
-    try { sessionStorage.setItem(EDIT_SUBMODE_KEY, mode === 'browse' ? 'browse' : 'select'); } catch {}
+    try {
+      const next = mode === 'browse' || mode === 'elements' ? mode : 'select';
+      sessionStorage.setItem(EDIT_SUBMODE_KEY, next);
+    } catch {}
   }
 
   function getPreviewDevice() {
@@ -3322,6 +3589,15 @@ window.NileTrailsAdmin = (() => {
     canUndo,
     canRedo,
     saveInlinePath,
+    getTextOverride,
+    saveTextOverride,
+    deleteListItem,
+    addListItemOfType,
+    recordDomDelete,
+    recordDomDuplicate,
+    addElementFromDeletedType,
+    clearDeletedElementTypes,
+    showActionToast,
     openLiveEditor: openLiveSectionEditor,
     openTab: (tabId) => { activeTab = tabId; },
     toggleHomeSectionVisibility: async (secId, onDone) => {

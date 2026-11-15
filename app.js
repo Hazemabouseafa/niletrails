@@ -53,6 +53,56 @@
     return ` data-live-text="${esc(path)}"${isHtml ? ' data-live-html="1"' : ''} title="انقر للتعديل المباشر على النص (Enter للحفظ)"`;
   }
 
+  const DEFAULT_SIG_POINTS = [
+    '01 / 3, 4 & 7-Night programs with interactive route maps',
+    '02 / 15 guided sightseeing places you can add to your journey',
+    '03 / Full onboard cruise facilities & private Egyptologist guides'
+  ];
+
+  function getDefaultCabinsForPrice(basePrice = 750) {
+    return [
+      { id: 'triple-cabin', name: 'Triple Cabin', priceDelta: -20, desc: '3 persons sharing' },
+      { id: 'double-cabin', name: 'Double Cabin', priceDelta: 0, desc: '2 persons sharing (Most chosen)' },
+      { id: 'single-cabin', name: 'Single Cabin', priceDelta: Math.round((Number(basePrice) || 750) * 0.65), desc: 'Private sole occupancy' },
+      { id: 'royal-suite', name: 'Royal Panoramic Suite', priceDelta: 420, desc: 'Upper deck suite with lounge' }
+    ];
+  }
+
+  const FALLBACK_SAMPLES = {
+    'itinerary': { day: 'Day 1', title: 'Day 1 — New Nile Discovery', desc: 'Enjoy guided Nile excursions, onboard lunch and panoramic river sailing.', meals: 'Breakfast · Lunch · Dinner' },
+    'facilities': '24-hour reception & panoramic sun deck lounge',
+    'included': 'All sightseeing transfers with private Egyptologist guide',
+    'excluded': 'International airfare and optional personal extras',
+    'cabins': { id: 'deluxe-cabin', name: 'Deluxe Panoramic Cabin', priceDelta: 120, desc: 'Panoramic river view with full-board dining' },
+    'routeStops': { stop: 'Luxor / Esna', day: 'Day 1' },
+    'faqs': { id: 'faq-new', scope: 'all', question: 'New Frequently Asked Question?', answer: 'Detailed travel answer — click to edit inline.' },
+    'signaturePoints': 'Private Egyptologist guide & tailor-made river pacing',
+    'addons': { id: 'addon-new', title: 'New Program Extension', category: 'VIP Extension', duration: '1 Day', price: 180, priceUnit: 'per person', summary: 'Tailored extension — click to edit inline.', image: 'assets/egypt-temple.webp', enabled: true, showOnHome: true },
+    'sightseeingPlaces': { id: 'sight-new', slug: 'new-excursion', title: 'New Guided Excursion', location: 'Luxor – East Bank', duration: 'Half Day', price: 85, priceUnit: 'person', shortDesc: 'Private guided tour — click to edit inline.', image: 'assets/sight-karnak.jpg', enabled: true },
+    'experiences': { id: 'exp-new', title: 'New Nile Experience', desc: 'Explore the river at your own pace.', url: 'nile-cruises', image: 'assets/nile-sailing.webp' }
+  };
+
+  function getSampleForListPath(listPath, fallbackKey = '', basePrice = 750) {
+    if (fallbackKey === 'DEFAULT_FACILITIES') return [...(CMS.DEFAULT_FACILITIES || [FALLBACK_SAMPLES.facilities])];
+    if (fallbackKey === 'signaturePoints') return [...DEFAULT_SIG_POINTS];
+    if (fallbackKey === 'cabins') return getDefaultCabinsForPrice(basePrice);
+    const tail = String(listPath || '').split('.').pop();
+    return FALLBACK_SAMPLES[fallbackKey] || FALLBACK_SAMPLES[tail] || 'New Element — click to edit';
+  }
+
+  function liveListAttr(listPath, itemKey, kindLabel = 'عنصر', opts = {}) {
+    if (!isLiveEdit() || !listPath) return '';
+    const extra = opts.fallbackKey ? ` data-live-fallback="${esc(opts.fallbackKey)}"` : '';
+    const prev = opts.preview ? ` data-live-preview="${esc(String(opts.preview).slice(0, 56))}"` : '';
+    const bp = opts.basePrice ? ` data-live-base-price="${Number(opts.basePrice)}"` : '';
+    return ` data-live-list="${esc(listPath)}" data-live-item="${esc(itemKey)}" data-live-kind="${esc(kindLabel)}"${extra}${bp}${prev}`;
+  }
+
+  function liveListAddBtn(listPath, kindLabel, fallbackKey = '', basePrice = 750) {
+    if (!isLiveEdit() || !listPath) return '';
+    return `<div class="nt-live-list-add-wrap"><button type="button" class="nt-live-list-add" data-live-add-list="${esc(listPath)}" data-live-kind="${esc(kindLabel)}"${fallbackKey ? ` data-live-fallback="${esc(fallbackKey)}"` : ''} data-live-base-price="${Number(basePrice) || 750}">+ إضافة ${esc(kindLabel)} جديد من نفس النوع</button></div>`;
+  }
+
   function liveCardCtrl(targetId, labelText = 'تعديل') {
     if (!isLiveEdit() || !targetId) return '';
     return `<button type="button" class="nt-live-card-ctrl" data-live-edit-sec="${esc(targetId)}" title="تحرير متقدم">✏ ${esc(labelText)}</button>`;
@@ -271,14 +321,18 @@
     const priText = s.headerPrimaryText || 'Plan your journey';
     const priUrl = s.headerPrimaryUrl || 'plan-your-journey';
 
+    const deletedList = Array.isArray(st.deletedElementTypes) ? st.deletedElementTypes : [];
+    const curScopeNorm = location.hash.replace(/^#\/?/, '').split('?')[0].replace(/^\/+|\/+$/g, '') || 'home';
+
     return `<header class="site-header ${live ? 'is-live-edit' : ''}">
       ${live ? `
         <div class="nt-live-toolbar" role="toolbar" aria-label="أدوات التحرير المباشر المتقدم">
           <div class="nt-live-toolbar-status">
-            <strong>● المحرر المباشر الشامل</strong>
+            <strong>● المحرر</strong>
             <div class="nt-live-seg" role="group" aria-label="وضع التفاعل">
-              <button type="button" class="nt-live-btn ${subMode === 'select' ? 'is-primary' : ''}" data-live-submode="select" title="اضغط على أي نص أو كارت للتعديل المباشر">🖱 تحرير مباشر</button>
-              <button type="button" class="nt-live-btn ${subMode === 'browse' ? 'is-primary' : ''}" data-live-submode="browse" title="تنقل بين الصفحات مع إبقاء أزرار ✏">🔗 تصفح الروابط</button>
+              <button type="button" class="nt-live-btn ${subMode === 'select' ? 'is-primary' : ''}" data-live-submode="select" title="اضغط على أي نص للتعديل المباشر أو مرّر على أي عنصر لحذفه/إضافته">🖱 النصوص</button>
+              <button type="button" class="nt-live-btn ${subMode === 'elements' ? 'is-primary' : ''}" data-live-submode="elements" title="اختر أي عنصر في الصفحة لحذفه أو إضافة مثله">🧱 حذف/إضافة</button>
+              <button type="button" class="nt-live-btn ${subMode === 'browse' ? 'is-primary' : ''}" data-live-submode="browse" title="تنقل بين الصفحات مع إبقاء أزرار ✏">🔗 تصفح</button>
             </div>
             <div class="nt-live-seg" role="group" aria-label="التراجع والإعادة">
               <button type="button" class="nt-live-btn" data-live-undo ${canUndo ? '' : 'disabled'} title="تراجع (Ctrl+Z)">↩ تراجع</button>
@@ -292,11 +346,30 @@
               <button type="button" class="nt-live-btn ${dev === 'mobile' ? 'is-primary' : ''}" data-live-device="mobile" title="موبايل 390px">📱</button>
             </div>
             <div class="nt-live-pop-anchor">
-              <button type="button" class="nt-live-btn" popovertarget="nt-live-outline-pop" id="btn-live-outline">📑 هيكل الصفحة</button>
+              <button type="button" class="nt-live-btn" popovertarget="nt-live-outline-pop" id="btn-live-outline">📑 الهيكل</button>
               <div id="nt-live-outline-pop" popover class="nt-live-popover" dir="rtl"></div>
             </div>
             <div class="nt-live-pop-anchor">
-              <button type="button" class="nt-live-btn is-primary" popovertarget="nt-live-create-pop">+ إضافة جديدة ▾</button>
+              <button type="button" class="nt-live-btn ${deletedList.length ? 'has-badge' : ''}" popovertarget="nt-live-deleted-pop" id="btn-live-deleted" title="إضافة عناصر من نفس نوع العناصر التي تم حذفها">🧩 نفس النوع${deletedList.length ? ` (${deletedList.length})` : ''}</button>
+              <div id="nt-live-deleted-pop" popover class="nt-live-popover nt-deleted-pop" dir="rtl">
+                <div class="nt-live-pop-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                  <span>قوالب العناصر المحذوفة (${deletedList.length})</span>
+                  ${deletedList.length ? '<button type="button" class="nt-live-btn" data-clear-deleted-types style="padding:2px 8px;font-size:11px">مسح</button>' : ''}
+                </div>
+                ${deletedList.length ? deletedList.map(tpl => `
+                  <div class="nt-deleted-row">
+                    <div class="nt-deleted-meta">
+                      <b>${esc(tpl.kindLabel || 'عنصر')}</b>
+                      ${tpl.previewText ? `<small>${esc(tpl.previewText)}</small>` : ''}
+                      <em>${esc(tpl.scope === curScopeNorm ? 'هذه الصفحة' : (tpl.scope || 'عام'))}</em>
+                    </div>
+                    <button type="button" class="nt-live-btn is-primary" data-add-deleted-type="${esc(tpl.id)}">+ إضافة مثله</button>
+                  </div>
+                `).join('') : '<p style="margin:8px 6px;font-size:12px;color:#bfd1db;line-height:1.6">احذف أي عنصر في أي صفحة ليُحفظ قالبه هنا وتضيف عناصر جديدة من نفس نوعه في أي وقت.</p>'}
+              </div>
+            </div>
+            <div class="nt-live-pop-anchor">
+              <button type="button" class="nt-live-btn is-primary" popovertarget="nt-live-create-pop">+ إضافة ▾</button>
               <div id="nt-live-create-pop" popover class="nt-live-popover" dir="rtl">
                 <div class="nt-live-pop-head">إنشاء عنصر جديد في الموقع</div>
                 <button type="button" class="nt-live-pop-item" data-live-edit-sec="create:cruise">🚢 إضافة نايل كروز جديد</button>
@@ -320,9 +393,11 @@
           ${photo(logoSrc, (s.brandName || 'NileTrails') + ' — Sailing the Nile', '', true)}
         </a>
         <nav class="desktop-nav" aria-label="Main navigation">
-          ${menus.map(m => `
+          ${menus.map(m => {
+            const hasNavKey = st.settings?.navLabels && Object.prototype.hasOwnProperty.call(st.settings.navLabels, m.key);
+            return `
             <div class="nav-group">
-              <a class="nav-link" href="${p(m.url)}">${esc(m.name)}${m.children?.length > 1 ? '<span class="chevron">⌄</span>' : ''}</a>
+              <a class="nav-link" href="${p(m.url)}"><nt-tx${hasNavKey ? liveTextAttr(`settings.navLabels.${m.key}`) : ''}>${esc(m.name)}</nt-tx>${m.children?.length > 1 ? '<span class="chevron">⌄</span>' : ''}</a>
               ${m.children?.length ? `
                 <div class="mega-menu">
                   <div class="menu-overline">Explore ${esc(m.name)}</div>
@@ -330,13 +405,14 @@
                 </div>
               ` : ''}
             </div>
-          `).join('')}
+          `;
+          }).join('')}
         </nav>
         <div class="nav-actions">
           ${live ? `<button type="button" class="nt-live-btn is-primary" data-live-edit-sec="header">✏ تعديل الهيدر</button>` : ''}
           <a href="${p('admin')}" class="nav-admin-pill" title="Open Admin Control Panel">⚙ Admin CMS</a>
-          <a href="${p(secUrl)}" class="nav-contact" aria-label="${esc(secText)}">${esc(secText)}</a>
-          <a href="${p(priUrl)}" class="nav-plan">${esc(priText)} <span>↗</span></a>
+          <a href="${p(secUrl)}" class="nav-contact" aria-label="${esc(secText)}"><nt-tx${liveTextAttr('settings.headerSecondaryText')}>${esc(secText)}</nt-tx></a>
+          <a href="${p(priUrl)}" class="nav-plan"><nt-tx${liveTextAttr('settings.headerPrimaryText')}>${esc(priText)}</nt-tx> <span>↗</span></a>
           <button type="button" id="menu-toggle" class="menu-toggle" aria-label="Open navigation" aria-expanded="false">☰</button>
         </div>
       </div>
@@ -379,7 +455,7 @@
         <div class="footer-pre">
           <span${liveTextAttr('settings.footerCtaEyebrow')}>${esc(ctaEyebrow)}</span>
           <h2${liveTextAttr('settings.footerCtaTitle', true)}>${ctaTitle}</h2>
-          ${button(esc(ctaBtnText), ctaBtnUrl, 'btn-light')}
+          ${button(`<nt-tx${liveTextAttr('settings.footerCtaBtnText')}>${esc(ctaBtnText)}</nt-tx>`, ctaBtnUrl, 'btn-light')}
         </div>
         <div class="footer-grid">
           <div class="footer-intro">
@@ -473,13 +549,13 @@
     const seeMoreUrl = `beyond-the-nile/nubian-and-the-nile/${place.slug}`;
 
     return `
-      <article class="sight-place-card" data-location="${esc(place.location)}">
+      <article class="sight-place-card" data-location="${esc(place.location)}"${liveListAttr('sightseeingPlaces', 'id:' + place.id, 'مزار سياحي', { preview: place.title })}>
         <div class="spc-photo">
           <a href="${p(seeMoreUrl)}">
             ${photo(place.image, place.title, '', eager)}
           </a>
-          <span class="spc-loc-badge">📍 ${esc(place.location)}</span>
-          ${place.duration ? `<span class="spc-dur-badge">⏱ ${esc(place.duration)}</span>` : ''}
+          <span class="spc-loc-badge">📍 <nt-tx${liveTextAttr(`sightseeingPlaces[id=${place.id}].location`)}>${esc(place.location)}</nt-tx></span>
+          ${place.duration ? `<span class="spc-dur-badge">⏱ <nt-tx${liveTextAttr(`sightseeingPlaces[id=${place.id}].duration`)}>${esc(place.duration)}</nt-tx></span>` : ''}
           ${liveCardCtrl('sight:' + place.id, 'تعديل المزار')}
         </div>
         <div class="spc-body">
@@ -492,7 +568,7 @@
           <div class="spc-price-row">
             <div class="spc-price-box">
               <small>GUIDED TOUR PRICE</small>
-              <strong>${cur}${place.price} <span>/ ${esc(place.priceUnit || 'person')}</span></strong>
+              <strong>${cur}${place.price} <span>/ <nt-tx${liveTextAttr(`sightseeingPlaces[id=${place.id}].priceUnit`)}>${esc(place.priceUnit || 'person')}</nt-tx></span></strong>
             </div>
             <div class="spc-actions">
               <a href="${p(seeMoreUrl)}" class="spc-see-more-btn">See More <span>↗</span></a>
@@ -524,10 +600,11 @@
     const minPrice = (Number(item.basePrice) > 0) ? Number(item.basePrice) : progMin;
     const collKey = kind === 'cruise' ? 'cruises' : kind === 'dahabiya' ? 'dahabiyas' : isPage ? 'customPages' : isJ ? 'journeys' : kind === 'destination' ? 'destinations' : 'stories';
     const cardTarget = (kind === 'cruise' || kind === 'dahabiya') ? `vessel:${item.id}` : isPage ? `page:${item.id}` : `collection:${collKey}:${item.id || item.slug}`;
+    const cardKindMap = { cruise: 'نايل كروز', dahabiya: 'ذهبية شراعية', journey: 'رحلة متكاملة', destination: 'وجهة سياحية', story: 'مقال نيلي', 'custom-page': 'صفحة مخصصة' };
     const titlePath = item.id ? `${collKey}[id=${item.id}].${isPage || kind === 'cruise' || kind === 'dahabiya' || kind === 'story' ? 'title' : 'name'}` : '';
     const subPath = item.id ? `${collKey}[id=${item.id}].${isPage ? 'heroSub' : 'sub'}` : '';
 
-    return `<article class="collection-card">
+    return `<article class="collection-card"${liveListAttr(collKey, 'id:' + (item.id || item.slug), cardKindMap[kind] || 'بطاقة', { preview: name })}>
       <a class="card-photo" href="${p(slug)}">
         ${photo(item.image || item.heroImage, name, '', eager)}
         ${progsCount > 0 ? `<span class="card-prog-badge">${progsCount} Programs (3N · 4N · 7N)</span>` : ''}
@@ -536,7 +613,7 @@
       </a>
       <div class="card-content">
         <div class="card-topline">
-          <span>${esc(item.tag || item.homeCardTag || meta)}</span>
+          <span${item.id && item.tag ? liveTextAttr(`${collKey}[id=${item.id}].tag`) : ''}>${esc(item.tag || item.homeCardTag || meta)}</span>
           ${!isJ && kind !== 'destination' && kind !== 'story' && !isPage ? bookmark(item.slug) : ''}
         </div>
         <a href="${p(slug)}"><h3${liveTextAttr(titlePath)}>${esc(name)}</h3></a>
@@ -547,7 +624,7 @@
           <div class="card-programs-preview">
             <small>AVAILABLE SAILING PROGRAMS:</small>
             <ul>
-              ${item.programs.slice(0, 3).map(pr => `<li><a href="${p(slug + '?program=' + pr.slug)}">◈ ${esc(pr.tabLabel || pr.duration)} — ${esc(pr.tabSub || pr.route)}</a></li>`).join('')}
+              ${item.programs.slice(0, 3).map(pr => `<li><a href="${p(slug + '?program=' + pr.slug)}">◈ <nt-tx${item.id && pr.id ? liveTextAttr(`${collKey}[id=${item.id}].programs[id=${pr.id}].${pr.tabLabel !== undefined ? 'tabLabel' : 'duration'}`) : ''}>${esc(pr.tabLabel || pr.duration)}</nt-tx> — <nt-tx${item.id && pr.id ? liveTextAttr(`${collKey}[id=${item.id}].programs[id=${pr.id}].${pr.tabSub !== undefined ? 'tabSub' : 'route'}`) : ''}>${esc(pr.tabSub || pr.route)}</nt-tx></a></li>`).join('')}
             </ul>
           </div>
         ` : ''}
@@ -559,8 +636,11 @@
     </article>`;
   }
 
-  function experienceCard(image, n, name, text, href, classname = '', eager = false) {
-    return `<a class="experience-tile ${classname}" href="${p(href)}"><div class="tile-image">${photo(image, name, '', eager)}</div><div class="tile-shade"></div>${liveCardCtrl('experiences', 'تعديل الكارت')}<div class="tile-top">0${n}<span>EXPERIENCE</span></div><div class="tile-bottom"><h3>${name}</h3><p>${text}</p><span>Explore this way <b>↗</b></span></div></a>`;
+  function experienceCard(image, n, name, text, href, classname = '', eager = false, expId = '') {
+    const hasExp = expId && (CMS.getState().homeConfig?.experiences || []).some(e => e.id === expId);
+    const titlePath = hasExp ? `homeConfig.experiences[id=${expId}].title` : '';
+    const descPath = hasExp ? `homeConfig.experiences[id=${expId}].desc` : '';
+    return `<a class="experience-tile ${classname}" href="${p(href)}"${hasExp ? liveListAttr('homeConfig.experiences', 'id:' + expId, 'تجربة رئيسية', { preview: name }) : ''}><div class="tile-image">${photo(image, name, '', eager)}</div><div class="tile-shade"></div>${liveCardCtrl('experiences', 'تعديل الكارت')}<div class="tile-top">0${n}<span>EXPERIENCE</span></div><div class="tile-bottom"><h3${liveTextAttr(titlePath)}>${name}</h3><p${liveTextAttr(descPath)}>${text}</p><span>Explore this way <b>↗</b></span></div></a>`;
   }
 
   function home() {
@@ -583,11 +663,7 @@
       { id: 'exp-3', title: 'Nubian & the Nile', desc: '15 iconic temples, tombs & Nubian villages with private tour guide.', url: 'beyond-the-nile/nubian-and-the-nile', image: IMG.temple },
       { id: 'exp-4', title: 'Beyond the Nile', desc: 'Cairo, Red Sea, White Desert, Oases and extraordinary stories.', url: 'beyond-the-nile', image: IMG.temple }
     ];
-    const sigPoints = Array.isArray(hc.signaturePoints) && hc.signaturePoints.length ? hc.signaturePoints : [
-      '01 / 3, 4 & 7-Night programs with interactive route maps',
-      '02 / 15 guided sightseeing places you can add to your journey',
-      '03 / Full onboard cruise facilities & private Egyptologist guides'
-    ];
+    const sigPoints = Array.isArray(hc.signaturePoints) ? hc.signaturePoints : DEFAULT_SIG_POINTS;
 
     const sectionRenderers = {
       search: () => `
@@ -618,27 +694,27 @@
                 <option value="7">7 nights (Round Trip)</option>
               </select>
             </label>
-            <button class="search-button" type="submit">${esc(hc.searchBtnText || 'Discover')} <span>↗</span></button>
+            <button class="search-button" type="submit"><nt-tx${liveTextAttr('homeConfig.searchBtnText')}>${esc(hc.searchBtnText || 'Discover')}</nt-tx> <span>↗</span></button>
           </form>
         </div>`,
       intro: () => `
         <section class="intro-band">
           <div class="wrap intro-band-inner">
             <div>${label(`<span${liveTextAttr('homeConfig.introEyebrow')}>${esc(hc.introEyebrow || 'THE NILETRAILS PHILOSOPHY')}</span>`)}<h2${liveTextAttr('homeConfig.introTitle', true)}>${hc.introTitle || 'More than seeing Egypt.<br><em>Feeling its rhythm.</em>'}</h2></div>
-            <div><p${liveTextAttr('homeConfig.introBody')}>${esc(hc.introBody || 'Every Nile cruise and dahabiya features curated 3, 4 & 7-night programs, full onboard facilities, private Egyptologist sightseeing tours, and seamless add-on extensions across Egypt.')}</p>${arrow(esc(hc.introLinkText || 'Explore Nubian & the Nile Sightseeing'), hc.introLinkUrl || 'beyond-the-nile/nubian-and-the-nile')}</div>
+            <div><p${liveTextAttr('homeConfig.introBody')}>${esc(hc.introBody || 'Every Nile cruise and dahabiya features curated 3, 4 & 7-night programs, full onboard facilities, private Egyptologist sightseeing tours, and seamless add-on extensions across Egypt.')}</p>${arrow(`<nt-tx${liveTextAttr('homeConfig.introLinkText')}>${esc(hc.introLinkText || 'Explore Nubian & the Nile Sightseeing')}</nt-tx>`, hc.introLinkUrl || 'beyond-the-nile/nubian-and-the-nile')}</div>
           </div>
         </section>`,
       experiences: () => `
         <section class="experience-section wrap section-space">
-          ${sectionTitle(esc(hc.expEyebrow || 'DISCOVER YOUR WAY'), hc.expTitle || 'One river. <em>Many ways to wonder.</em>', esc(hc.expSub || 'Choose how you want to experience Egypt — then select your sailing program, guided sightseeing and custom add-ons.'))}
+          ${sectionTitle(`<span${liveTextAttr('homeConfig.expEyebrow')}>${esc(hc.expEyebrow || 'DISCOVER YOUR WAY')}</span>`, `<nt-tx${liveTextAttr('homeConfig.expTitle', true)}>${hc.expTitle || 'One river. <em>Many ways to wonder.</em>'}</nt-tx>`, `<nt-tx${liveTextAttr('homeConfig.expSub')}>${esc(hc.expSub || 'Choose how you want to experience Egypt — then select your sailing program, guided sightseeing and custom add-ons.')}</nt-tx>`)}
           <div class="experience-layout">
-            ${experiencesList.map((exp, idx) => experienceCard(exp.image || IMG.sailing, idx + 1, esc(exp.title), esc(exp.desc), exp.url || 'nile-cruises', idx === 0 ? 'tile-large' : '', true)).join('')}
+            ${experiencesList.map((exp, idx) => experienceCard(exp.image || IMG.sailing, idx + 1, esc(exp.title), esc(exp.desc), exp.url || 'nile-cruises', idx === 0 ? 'tile-large' : '', true, exp.id || '')).join('')}
           </div>
         </section>`,
       featuredCruises: () => featuredCruises.length ? `
         <section class="featured-section section-space">
           <div class="wrap">
-            ${sectionTitle(esc(hc.cruisesEyebrow || 'THE NILE COLLECTION & PROGRAMS'), hc.cruisesTitle || 'The journey begins <em>on the water.</em>', esc(hc.cruisesSub || 'Select any vessel below to view its 3, 4 & 7-night programs, route map, cruise facilities, guided sightseeing add-ons and booking form.'), arrow('View all Nile Cruises', 'nile-cruises'))}
+            ${sectionTitle(`<span${liveTextAttr('homeConfig.cruisesEyebrow')}>${esc(hc.cruisesEyebrow || 'THE NILE COLLECTION & PROGRAMS')}</span>`, `<nt-tx${liveTextAttr('homeConfig.cruisesTitle', true)}>${hc.cruisesTitle || 'The journey begins <em>on the water.</em>'}</nt-tx>`, `<nt-tx${liveTextAttr('homeConfig.cruisesSub')}>${esc(hc.cruisesSub || 'Select any vessel below to view its 3, 4 & 7-night programs, route map, cruise facilities, guided sightseeing add-ons and booking form.')}</nt-tx>`, arrow('View all Nile Cruises', 'nile-cruises'))}
             <div class="card-grid three">
               ${featuredCruises.slice(0, 6).map(x => miniCard(x, x.kind || 'cruise', true)).join('')}
             </div>
@@ -646,12 +722,12 @@
         </section>` : '',
       sightseeingHome: () => sightseeing.length ? `
         <section class="wrap section-space">
-          ${sectionTitle(esc(hc.sightEyebrow || 'BEYOND THE NILE · NUBIAN AND THE NILE'), hc.sightTitle || 'Main Places to Visit <em>During a Nile Cruise.</em>', esc(hc.sightSub || 'Explore the iconic temples, royal tombs and Nubian heritage sites between Luxor and Aswan — each can be added to your journey with a private Egyptologist tour guide.'), arrow('View All 15 Places in Nubian & the Nile', 'beyond-the-nile/nubian-and-the-nile'))}
+          ${sectionTitle(`<span${liveTextAttr('homeConfig.sightEyebrow')}>${esc(hc.sightEyebrow || 'BEYOND THE NILE · NUBIAN AND THE NILE')}</span>`, `<nt-tx${liveTextAttr('homeConfig.sightTitle', true)}>${hc.sightTitle || 'Main Places to Visit <em>During a Nile Cruise.</em>'}</nt-tx>`, `<nt-tx${liveTextAttr('homeConfig.sightSub')}>${esc(hc.sightSub || 'Explore the iconic temples, royal tombs and Nubian heritage sites between Luxor and Aswan — each can be added to your journey with a private Egyptologist tour guide.')}</nt-tx>`, arrow('View All 15 Places in Nubian & the Nile', 'beyond-the-nile/nubian-and-the-nile'))}
           <div class="sight-cards-grid">
             ${sightseeing.slice(0, 6).map(pl => renderSightseeingCard(pl, { showAddToggle: false, eager: true })).join('')}
           </div>
           <div style="text-align:center;margin-top:32px">
-            ${button(esc(hc.sightBtnText || 'Explore All 15 Sightseeing Places & Prices'), 'beyond-the-nile/nubian-and-the-nile', 'btn-gold')}
+            ${button(`<nt-tx${liveTextAttr('homeConfig.sightBtnText')}>${esc(hc.sightBtnText || 'Explore All 15 Sightseeing Places & Prices')}</nt-tx>`, 'beyond-the-nile/nubian-and-the-nile', 'btn-gold')}
           </div>
         </section>` : '',
       customPagesHome: () => homeCustomPages.length ? `
@@ -669,24 +745,25 @@
             <h2${liveTextAttr('homeConfig.signatureTitle', true)}>${hc.signatureTitle || 'Let the days<br><em>unfold naturally.</em>'}</h2>
             <p${liveTextAttr('homeConfig.signatureBody')}>${esc(hc.signatureBody || 'There is something transformative about travelling at the pace of the river. Wake to quiet mornings, linger over the landscape and customize your voyage with guided sightseeing and seamless extensions.')}</p>
             <div class="signature-points">
-              ${sigPoints.map(pt => `<span>${esc(pt)}</span>`).join('')}
+              ${sigPoints.map((pt, idx) => `<span${liveTextAttr(`homeConfig.signaturePoints.${idx}`)}${liveListAttr('homeConfig.signaturePoints', 'idx:' + idx, 'نقطة تميز', { fallbackKey: Array.isArray(hc.signaturePoints) ? '' : 'signaturePoints', preview: pt })}>${esc(pt)}</span>`).join('')}
+              ${liveListAddBtn('homeConfig.signaturePoints', 'نقطة تميز', Array.isArray(hc.signaturePoints) ? '' : 'signaturePoints')}
             </div>
-            ${button(esc(hc.signatureBtnText || 'Discover Dahabiya Sailing'), hc.signatureBtnUrl || 'dahabiyas', 'btn-outline')}
+            ${button(`<nt-tx${liveTextAttr('homeConfig.signatureBtnText')}>${esc(hc.signatureBtnText || 'Discover Dahabiya Sailing')}</nt-tx>`, hc.signatureBtnUrl || 'dahabiyas', 'btn-outline')}
           </div>
         </section>`,
       featuredAddons: () => homeAddons.length ? `
         <section class="wrap section-space">
-          ${sectionTitle(esc(hc.addonsEyebrow || 'ENHANCE YOUR VOYAGE'), hc.addonsTitle || 'Popular Add-ons & <em>Program Extensions.</em>', esc(hc.addonsSub || 'When booking any cruise program, you can effortlessly attach these multi-day extensions and signature experiences.'))}
+          ${sectionTitle(`<span${liveTextAttr('homeConfig.addonsEyebrow')}>${esc(hc.addonsEyebrow || 'ENHANCE YOUR VOYAGE')}</span>`, `<nt-tx${liveTextAttr('homeConfig.addonsTitle', true)}>${hc.addonsTitle || 'Popular Add-ons & <em>Program Extensions.</em>'}</nt-tx>`, `<nt-tx${liveTextAttr('homeConfig.addonsSub')}>${esc(hc.addonsSub || 'When booking any cruise program, you can effortlessly attach these multi-day extensions and signature experiences.')}</nt-tx>`)}
           <div class="card-grid three">
             ${homeAddons.map(ad => `
-              <article class="collection-card addon-home-card">
+              <article class="collection-card addon-home-card"${liveListAttr('addons', 'id:' + ad.id, 'إضافة برنامج', { preview: ad.title })}>
                 <div class="card-photo">
                   ${photo(ad.image, ad.title, '', true)}
-                  <span class="card-prog-badge">${esc(ad.duration)}</span>
+                  <span class="card-prog-badge"${liveTextAttr(`addons[id=${ad.id}].duration`)}>${esc(ad.duration)}</span>
                   ${liveCardCtrl('addon:' + ad.id, 'تعديل الإضافة')}
                 </div>
                 <div class="card-content">
-                  <div class="card-topline"><span>${esc(ad.category)}</span><strong>+${cur}${ad.price} <small>${esc(ad.priceUnit)}</small></strong></div>
+                  <div class="card-topline"><span${liveTextAttr(`addons[id=${ad.id}].category`)}>${esc(ad.category)}</span><strong>+${cur}${ad.price} <small>${esc(ad.priceUnit)}</small></strong></div>
                   <h3${liveTextAttr(`addons[id=${ad.id}].title`)}>${esc(ad.title)}</h3>
                   <p class="card-excerpt"${liveTextAttr(`addons[id=${ad.id}].summary`)}>${esc(ad.summary)}</p>
                   <div class="card-footer">
@@ -705,19 +782,19 @@
               ${label(`<span${liveTextAttr('homeConfig.journeysEyebrow')}>${esc(hc.journeysEyebrow || 'GO BEYOND THE ORDINARY')}</span>`)}
               <h2${liveTextAttr('homeConfig.journeysTitle', true)}>${hc.journeysTitle || 'Egypt is a story.<br><em>Make it yours.</em>'}</h2>
               <p${liveTextAttr('homeConfig.journeysBody')}>${esc(hc.journeysBody || 'Our Journeys are not rigid packages. They are thoughtful starting points for the experiences, landscapes and connections you want to make.')}</p>
-              ${button(esc(hc.journeysBtnText || 'Explore Journeys'), hc.journeysBtnUrl || 'journeys', 'btn-gold')}
+              ${button(`<nt-tx${liveTextAttr('homeConfig.journeysBtnText')}>${esc(hc.journeysBtnText || 'Explore Journeys')}</nt-tx>`, hc.journeysBtnUrl || 'journeys', 'btn-gold')}
             </div>
             <div class="journey-feature-tiles">
-              <a href="${p('journeys/classic-nile-journey')}" class="journey-feature-card">${photo(hc.journeysCard1Image || IMG.temple, hc.journeysCard1Title || 'Classic Nile Journey')}${liveCardCtrl('journeysFeature', 'تعديل الكارت')}<div><small>${esc(hc.journeysCard1Sub || '01 / THE ESSENTIALS')}</small><h3>${esc(hc.journeysCard1Title || 'Classic Nile Journey')}</h3><span>Discover the route ↗</span></div></a>
-              <a href="${p('beyond-the-nile/nubian-and-the-nile')}" class="journey-feature-card lower">${photo(hc.journeysCard2Image || IMG.sailing, hc.journeysCard2Title || 'Nubian & the Nile Sightseeing')}${liveCardCtrl('journeysFeature', 'تعديل الكارت')}<div><small>${esc(hc.journeysCard2Sub || '02 / BEYOND THE NILE')}</small><h3>${esc(hc.journeysCard2Title || 'Nubian & the Nile Sightseeing')}</h3><span>Explore 15 iconic places ↗</span></div></a>
+              <a href="${p('journeys/classic-nile-journey')}" class="journey-feature-card">${photo(hc.journeysCard1Image || IMG.temple, hc.journeysCard1Title || 'Classic Nile Journey')}${liveCardCtrl('journeysFeature', 'تعديل الكارت')}<div><small${liveTextAttr('homeConfig.journeysCard1Sub')}>${esc(hc.journeysCard1Sub || '01 / THE ESSENTIALS')}</small><h3${liveTextAttr('homeConfig.journeysCard1Title')}>${esc(hc.journeysCard1Title || 'Classic Nile Journey')}</h3><span>Discover the route ↗</span></div></a>
+              <a href="${p('beyond-the-nile/nubian-and-the-nile')}" class="journey-feature-card lower">${photo(hc.journeysCard2Image || IMG.sailing, hc.journeysCard2Title || 'Nubian & the Nile Sightseeing')}${liveCardCtrl('journeysFeature', 'تعديل الكارت')}<div><small${liveTextAttr('homeConfig.journeysCard2Sub')}>${esc(hc.journeysCard2Sub || '02 / BEYOND THE NILE')}</small><h3${liveTextAttr('homeConfig.journeysCard2Title')}>${esc(hc.journeysCard2Title || 'Nubian & the Nile Sightseeing')}</h3><span>Explore 15 iconic places ↗</span></div></a>
             </div>
           </div>
         </section>`,
       storiesSection: () => activeStories.length ? `
         <section class="stories-section wrap section-space">
-          ${sectionTitle(esc(hc.storiesEyebrow || 'FROM THE JOURNAL'), hc.storiesTitle || 'Stories worth <em>taking with you.</em>', esc(hc.storiesSub || 'Guides, ideas and inspiration for seeing Egypt with fresh eyes.'), arrow('Visit Nile Stories', 'nile-stories'))}
+          ${sectionTitle(`<span${liveTextAttr('homeConfig.storiesEyebrow')}>${esc(hc.storiesEyebrow || 'FROM THE JOURNAL')}</span>`, `<nt-tx${liveTextAttr('homeConfig.storiesTitle', true)}>${hc.storiesTitle || 'Stories worth <em>taking with you.</em>'}</nt-tx>`, `<nt-tx${liveTextAttr('homeConfig.storiesSub')}>${esc(hc.storiesSub || 'Guides, ideas and inspiration for seeing Egypt with fresh eyes.')}</nt-tx>`, arrow('Visit Nile Stories', 'nile-stories'))}
           <div class="story-row">
-            ${activeStories.slice(0, 3).map(s => `<a href="${p('nile-stories/' + s.slug)}" class="story-tile">${photo(s.image, s.title)}${liveCardCtrl('collection:stories:' + s.id, 'تعديل المقال')}<div><span>${esc(s.category)}</span><h3${liveTextAttr(`stories[id=${s.id}].title`)}>${esc(s.title)}</h3><small>Read the story ↗</small></div></a>`).join('')}
+            ${activeStories.slice(0, 3).map(s => `<a href="${p('nile-stories/' + s.slug)}" class="story-tile"${liveListAttr('stories', 'id:' + s.id, 'مقال نيلي', { preview: s.title })}>${photo(s.image, s.title)}${liveCardCtrl('collection:stories:' + s.id, 'تعديل المقال')}<div><span${liveTextAttr(`stories[id=${s.id}].category`)}>${esc(s.category)}</span><h3${liveTextAttr(`stories[id=${s.id}].title`)}>${esc(s.title)}</h3><small>Read the story ↗</small></div></a>`).join('')}
           </div>
         </section>` : '',
       closingBanner: () => `
@@ -727,7 +804,7 @@
               ${label(`<span${liveTextAttr('homeConfig.closingEyebrow')}>${esc(hc.closingEyebrow || 'MADE FOR YOUR MOMENTS')}</span>`)}
               <h2${liveTextAttr('homeConfig.closingTitle', true)}>${hc.closingTitle || 'Where will your<br><em>story take you?</em>'}</h2>
               <p${liveTextAttr('homeConfig.closingBody')}>${esc(hc.closingBody || 'Tell us the places you dream about. We will help design the journey that feels right for you.')}</p>
-              ${button(esc(hc.closingBtnText || 'Plan Your Journey'), hc.closingBtnUrl || 'plan-your-journey', 'btn-gold')}
+              ${button(`<nt-tx${liveTextAttr('homeConfig.closingBtnText')}>${esc(hc.closingBtnText || 'Plan Your Journey')}</nt-tx>`, hc.closingBtnUrl || 'plan-your-journey', 'btn-gold')}
             </div>
           </div>
         </section>`
@@ -745,8 +822,8 @@
           <h1${liveTextAttr('homeConfig.heroTitle', true)}>${hc.heroTitle || 'Find your <em>Egypt</em><br>along the Nile.'}</h1>
           <p${liveTextAttr('homeConfig.heroSub')}>${esc(hc.heroSub || 'From timeless river cruises to intimate dahabiyas and journeys shaped entirely around you.')}</p>
           <div class="hero-buttons">
-            ${button(esc(hc.primaryBtnText || 'Explore the Nile'), hc.primaryBtnUrl || 'nile-cruises', 'btn-gold')}
-            ${button(esc(hc.secondaryBtnText || 'Nubian & the Nile Sightseeing'), hc.secondaryBtnUrl || 'beyond-the-nile/nubian-and-the-nile', 'btn-glass')}
+            ${button(`<nt-tx${liveTextAttr('homeConfig.primaryBtnText')}>${esc(hc.primaryBtnText || 'Explore the Nile')}</nt-tx>`, hc.primaryBtnUrl || 'nile-cruises', 'btn-gold')}
+            ${button(`<nt-tx${liveTextAttr('homeConfig.secondaryBtnText')}>${esc(hc.secondaryBtnText || 'Nubian & the Nile Sightseeing')}</nt-tx>`, hc.secondaryBtnUrl || 'beyond-the-nile/nubian-and-the-nile', 'btn-glass')}
           </div>
         </div>
         <div class="hero-vertical">NILETRAILS — SAILING THE NILE</div>
@@ -856,20 +933,25 @@
     if (!activeProg) return '<section class="wrap section-space"><p>No programs configured for this vessel yet.</p></section>';
 
     const heroVideo = activeProg.heroVideo || vessel.heroVideo || (isCruise ? V + 'hero-cruise-1.mp4' : V + 'hero-dahabiya-1.mp4');
-    const facilities = (activeProg.facilities && activeProg.facilities.length) ? activeProg.facilities : (vessel.facilities && vessel.facilities.length ? vessel.facilities : CMS.DEFAULT_FACILITIES);
+    const vColl = isCruise ? 'cruises' : 'dahabiyas';
+    const vPath = `${vColl}[id=${vessel.id}]`;
+    const progPath = `${vPath}.programs[id=${activeProg.id}]`;
+    const hasProgFacs = Array.isArray(activeProg.facilities);
+    const hasVesselFacs = Boolean(!hasProgFacs && Array.isArray(vessel.facilities));
+    const facBase = hasProgFacs ? `${progPath}.facilities` : (hasVesselFacs ? `${vPath}.facilities` : `${vPath}.facilities`);
+    const facFallbackKey = hasProgFacs || hasVesselFacs ? '' : 'DEFAULT_FACILITIES';
+    const facilities = hasProgFacs ? activeProg.facilities : (hasVesselFacs ? vessel.facilities : CMS.DEFAULT_FACILITIES);
     const sightseeingPlaces = (st.sightseeingPlaces || []).filter(s => s.enabled !== false);
+    const addonsIdSet = new Set((st.addons || []).map(a => a.id));
     const availableAddons = CMS.getAvailableAddonsForProgram(activeProg.id, activeProg.allowedAddonIds);
     const programExtensions = availableAddons.filter(a => a.type === 'program-extension');
     const excursionsAndVip = availableAddons.filter(a => a.type !== 'program-extension');
 
-    const cabins = activeProg.cabins && activeProg.cabins.length ? activeProg.cabins : [
-      { id: 'triple-cabin', name: 'Triple Cabin', priceDelta: -20, desc: '3 persons sharing' },
-      { id: 'double-cabin', name: 'Double Cabin', priceDelta: 0, desc: '2 persons sharing (Most chosen)' },
-      { id: 'single-cabin', name: 'Single Cabin', priceDelta: Math.round(activeProg.basePrice * 0.65), desc: 'Private sole occupancy' },
-      { id: 'royal-suite', name: 'Royal Panoramic Suite', priceDelta: 420, desc: 'Upper deck suite with lounge' }
-    ];
+    const hasProgCabins = Array.isArray(activeProg.cabins);
+    const cabins = hasProgCabins ? activeProg.cabins : getDefaultCabinsForPrice(activeProg.basePrice);
 
-    const routeStops = (activeProg.routeStops && activeProg.routeStops.length)
+    const hasRouteStops = Array.isArray(activeProg.routeStops);
+    const routeStops = hasRouteStops
       ? activeProg.routeStops
       : (activeProg.itinerary || []).map((it, idx) => ({
           stop: it.stop || (it.title ? it.title.split('—')[0].replace(/Arrival at|Arrival in/i, '').trim().slice(0, 18) : `Stop ${idx + 1}`),
@@ -896,13 +978,13 @@
             ${esc(vessel.title)}
           </div>
           <div class="nct-hero-badges">
-            <span class="nct-badge-gold">★★★★★ 5-Star ${esc(vessel.tier)} ${isCruise ? 'Nile Cruise' : 'Dahabiya'}</span>
-            <span class="nct-badge-glass">⏱ ${esc(activeProg.duration)}</span>
-            <span class="nct-badge-glass">📍 ${esc(activeProg.route)}</span>
+            <span class="nct-badge-gold">★★★★★ 5-Star <nt-tx${liveTextAttr(`${vPath}.tier`)}>${esc(vessel.tier)}</nt-tx> ${isCruise ? 'Nile Cruise' : 'Dahabiya'}</span>
+            <span class="nct-badge-glass">⏱ <nt-tx${liveTextAttr(`${progPath}.duration`)}>${esc(activeProg.duration)}</nt-tx></span>
+            <span class="nct-badge-glass">📍 <nt-tx${liveTextAttr(`${progPath}.route`)}>${esc(activeProg.route)}</nt-tx></span>
             <span class="nct-badge-glass">🔇 Autoplay HD Cruise Preview</span>
           </div>
-          <h1><span${liveTextAttr(`${isCruise ? 'cruises' : 'dahabiyas'}[id=${vessel.id}].title`)}>${esc(vessel.title)}</span></h1>
-          <p class="nct-hero-sub">${esc(activeProg.title)} — <span${liveTextAttr(`${isCruise ? 'cruises' : 'dahabiyas'}[id=${vessel.id}].sub`)}>${esc(vessel.sub)}</span></p>
+          <h1><span${liveTextAttr(`${vPath}.title`)}>${esc(vessel.title)}</span></h1>
+          <p class="nct-hero-sub"><span${liveTextAttr(`${progPath}.title`)}>${esc(activeProg.title)}</span> — <span${liveTextAttr(`${vPath}.sub`)}>${esc(vessel.sub)}</span></p>
         </div>
       </section>
       ${liveActionBar(`تحرير مباشر: ${vessel.title}`, [
@@ -940,9 +1022,9 @@
 
           <!-- 1. ABOUT & 4 ICON HIGHLIGHTS -->
           <section class="nct-sect" id="overview">
-            <h2 class="nct-sect-h"><span class="nct-bar"></span>About ${esc(vessel.title)}</h2>
+            <h2 class="nct-sect-h"><span class="nct-bar"></span>About <nt-tx${liveTextAttr(`${vPath}.title`)}>${esc(vessel.title)}</nt-tx></h2>
             <div class="nct-prose">
-              <p>${esc(activeProg.summary)}</p>
+              <p${liveTextAttr(`${progPath}.summary`)}>${esc(activeProg.summary)}</p>
               <p>Onboard <strong>${esc(vessel.title)}</strong>, panoramic river-view cabins, a sun deck and swimming pool, a panoramic lounge bar, spa & massage services, and a full-board restaurant serving Egyptian and international cuisine create a seamless setting between Luxor and Aswan. Every program includes a licensed Egyptologist tour guide and private air-conditioned shore transfers.</p>
             </div>
 
@@ -974,7 +1056,7 @@
           <section class="nct-sect" id="itinerary">
             <div class="nct-sect-head-row">
               <h2 class="nct-sect-h"><span class="nct-bar"></span>The Journey — Choose Your Program</h2>
-              <span class="nct-dep-pill">🗓 ${esc(activeProg.departureDays || 'Weekly & Private Departures')}</span>
+              <span class="nct-dep-pill">🗓 <nt-tx${liveTextAttr(`${progPath}.departureDays`)}>${esc(activeProg.departureDays || 'Weekly & Private Departures')}</nt-tx></span>
             </div>
 
             <!-- Journey Program Tabs (3 Nights / 4 Nights / 7 Nights / Custom) -->
@@ -983,10 +1065,11 @@
                 const isAct = prog.id === activeProg.id;
                 const tabTitle = prog.tabLabel || `${prog.nights} Nights`;
                 const tabSub = prog.tabSub || prog.route;
+                const tp = `${vPath}.programs[id=${prog.id}]`;
                 return `
-                  <button type="button" class="nct-jtab ${isAct ? 'active' : ''}" data-prog-switch="${esc(prog.slug)}" role="tab" aria-selected="${isAct}">
-                    <span>${esc(tabTitle)}</span>
-                    <small>${esc(tabSub)}</small>
+                  <button type="button" class="nct-jtab ${isAct ? 'active' : ''}" data-prog-switch="${esc(prog.slug)}" role="tab" aria-selected="${isAct}"${liveListAttr(`${vPath}.programs`, 'id:' + prog.id, 'برنامج كروز', { preview: tabTitle })}>
+                    <span${liveTextAttr(`${tp}.${prog.tabLabel !== undefined ? 'tabLabel' : 'duration'}`)}>${esc(tabTitle)}</span>
+                    <small${liveTextAttr(`${tp}.${prog.tabSub !== undefined ? 'tabSub' : 'route'}`)}>${esc(tabSub)}</small>
                     <em class="nct-jtab-price">From ${cur}${prog.basePrice} pp</em>
                   </button>
                 `;
@@ -998,10 +1081,10 @@
               <div class="nct-route-stops">
                 <div class="nct-route-line"></div>
                 ${routeStops.map((rs, idx) => `
-                  <button type="button" class="nct-rstop ${idx === 0 ? 'on' : ''}" data-day-jump="${idx}">
+                  <button type="button" class="nct-rstop ${idx === 0 ? 'on' : ''}" data-day-jump="${idx}"${hasRouteStops ? liveListAttr(`${progPath}.routeStops`, 'idx:' + idx, 'محطة خط سير', { preview: rs.stop }) : ''}>
                     <span class="nct-rs-dot"></span>
-                    <span class="nct-rs-name">${esc(rs.stop)}</span>
-                    <span class="nct-rs-day">${esc(rs.day)}</span>
+                    <span class="nct-rs-name"${hasRouteStops ? liveTextAttr(`${progPath}.routeStops.${idx}.stop`) : ''}>${esc(rs.stop)}</span>
+                    <span class="nct-rs-day"${hasRouteStops ? liveTextAttr(`${progPath}.routeStops.${idx}.day`) : ''}>${esc(rs.day)}</span>
                   </button>
                 `).join('')}
               </div>
@@ -1012,21 +1095,22 @@
               ${(activeProg.itinerary || []).map((item, idx) => {
                 const dayNum = String(item.day || '').replace(/[^0-9]/g, '') || (idx + 1);
                 const meals = item.meals || (idx === 0 ? 'Lunch · Dinner' : idx === (activeProg.itinerary.length - 1) ? 'Breakfast' : 'Breakfast · Lunch · Dinner');
+                const dayPath = `${progPath}.itinerary.${idx}`;
                 return `
-                  <article class="nct-daycard ${idx === 0 ? 'hot' : ''}" id="nct-day-${idx}">
+                  <article class="nct-daycard ${idx === 0 ? 'hot' : ''}" id="nct-day-${idx}"${liveListAttr(`${progPath}.itinerary`, 'idx:' + idx, 'بطاقة يوم برنامج', { preview: item.title })}>
                     <div class="nct-dc-num">
                       <small>Day</small>
                       <b>${esc(dayNum)}</b>
                     </div>
                     <div class="nct-dc-body">
-                      <h4>${esc(item.title)}</h4>
+                      <h4${liveTextAttr(`${dayPath}.title`)}>${esc(item.title)}</h4>
                       <div class="nct-dc-text">
-                        <p>${esc(item.desc)}</p>
+                        <p${liveTextAttr(`${dayPath}.desc`)}>${esc(item.desc)}</p>
                       </div>
                       <div class="nct-dc-meals-row">
                         <span class="nct-dc-meals">
                           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 2v7c0 1.1.9 2 2 2s2-.9 2-2V2M5 2v9m6-9v20m4-12c0-3 1-5 3-5v17"/></svg>
-                          ${esc(meals)}
+                          <nt-tx${liveTextAttr(`${dayPath}.meals`)}>${esc(meals)}</nt-tx>
                         </span>
                       </div>
                     </div>
@@ -1034,6 +1118,7 @@
                 `;
               }).join('')}
             </div>
+            ${liveListAddBtn(`${progPath}.itinerary`, 'يوم في البرنامج')}
           </section>
 
           <!-- 3. CRUISE FACILITIES (Mandatory in every program) -->
@@ -1041,13 +1126,14 @@
             <h2 class="nct-sect-h"><span class="nct-bar"></span>Cruise Facilities & Onboard Amenities</h2>
             <p class="nct-sect-sub">Every program aboard <strong>${esc(vessel.title)}</strong> includes full access to our 5-star onboard facilities and cabin amenities:</p>
             <ul class="nct-facs">
-              ${facilities.map(fac => `
-                <li>
+              ${facilities.map((fac, idx) => `
+                <li${liveListAttr(facBase, 'idx:' + idx, 'مرفق كروز', { fallbackKey: facFallbackKey, preview: fac })}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12 5 5L20 7"/></svg>
-                  <span>${esc(fac)}</span>
+                  <span${liveTextAttr(`${facBase}.${idx}`)}>${esc(fac)}</span>
                 </li>
               `).join('')}
             </ul>
+            ${liveListAddBtn(facBase, 'مرفق كروز', facFallbackKey)}
           </section>
 
           <!-- 4. SIGHTSEEING WITH TOUR GUIDE — CAN ADD TO YOUR JOURNEY (Mandatory in every program) -->
@@ -1073,11 +1159,12 @@
             <div class="sight-cards-grid prog-sight-grid" id="prog-sight-grid">
               ${sightseeingPlaces.map(pl => renderSightseeingCard(pl, { showAddToggle: true })).join('')}
             </div>
+            ${liveListAddBtn('sightseeingPlaces', 'مزار سياحي')}
           </section>
 
           <!-- 5. PRICING & SEASONAL CABIN CARDS (like nilecruisetrips.com) -->
           <section class="nct-sect" id="pricing">
-            <h2 class="nct-sect-h"><span class="nct-bar"></span>Pricing — ${esc(activeProg.title)}</h2>
+            <h2 class="nct-sect-h"><span class="nct-bar"></span>Pricing — <nt-tx${liveTextAttr(`${progPath}.title`)}>${esc(activeProg.title)}</nt-tx></h2>
             <div class="nct-price-ctrl">
               <span class="nct-seg-label">Season</span>
               <div class="nct-seg" id="nct-seg-season">
@@ -1128,10 +1215,11 @@
                   Included in Program
                 </h3>
                 <ul>
-                  ${(activeProg.included || []).map(inc => `
-                    <li><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12 5 5L20 7"/></svg>${esc(inc)}</li>
+                  ${(activeProg.included || []).map((inc, idx) => `
+                    <li${liveListAttr(`${progPath}.included`, 'idx:' + idx, 'بند مشمول', { preview: inc })}><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12 5 5L20 7"/></svg><span${liveTextAttr(`${progPath}.included.${idx}`)}>${esc(inc)}</span></li>
                   `).join('')}
                 </ul>
+                ${liveListAddBtn(`${progPath}.included`, 'بند مشمول')}
               </div>
               <div class="nct-ie-card exc">
                 <h3>
@@ -1139,10 +1227,11 @@
                   Not Included (Can Add Above)
                 </h3>
                 <ul>
-                  ${(activeProg.excluded || []).map(exc => `
-                    <li><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6 6 18"/></svg>${esc(exc)}</li>
+                  ${(activeProg.excluded || []).map((exc, idx) => `
+                    <li${liveListAttr(`${progPath}.excluded`, 'idx:' + idx, 'بند غير مشمول', { preview: exc })}><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6 6 18"/></svg><span${liveTextAttr(`${progPath}.excluded.${idx}`)}>${esc(exc)}</span></li>
                   `).join('')}
                 </ul>
+                ${liveListAddBtn(`${progPath}.excluded`, 'بند غير مشمول')}
               </div>
             </div>
           </section>
@@ -1165,7 +1254,7 @@
           <section class="nct-sect foreign-booking-section" id="booking-form-anchor">
             <div class="fb-header">
               ${label('INTERNATIONAL GUEST RESERVATION & ADD-ONS')}
-              <h3>Book <em>${esc(activeProg.title)}</em> & Customize Your Journey</h3>
+              <h3>Book <em><nt-tx${liveTextAttr(`${progPath}.title`)}>${esc(activeProg.title)}</nt-tx></em> & Customize Your Journey</h3>
               <p>Complete your foreign traveller details below. Any <strong>Sightseeing with Tour Guide</strong> tours you ticked above, plus any <strong>Other Program Extensions</strong> selected below, are automatically calculated into your package.</p>
             </div>
 
@@ -1181,16 +1270,17 @@
                 <legend><span>01</span> Select Cabin Category, Sailing Date & Travellers</legend>
                 <div class="cabin-selector-grid">
                   ${cabins.map((cb, idx) => `
-                    <label class="cabin-radio-card" for="cabin-${esc(cb.id || idx)}">
+                    <label class="cabin-radio-card" for="cabin-${esc(cb.id || idx)}"${liveListAttr(`${progPath}.cabins`, 'idx:' + idx, 'فئة كابينة', { fallbackKey: hasProgCabins ? '' : 'cabins', basePrice: activeProg.basePrice, preview: cb.name })}>
                       <input type="radio" id="cabin-${esc(cb.id || idx)}" name="cabinName" value="${esc(cb.name)}" data-cabin-delta="${Number(cb.priceDelta) || 0}" ${idx === 1 || (idx === 0 && cabins.length === 1) ? 'checked' : ''}>
                       <div class="cabin-card-top">
-                        <strong>${esc(cb.name)}</strong>
+                        <strong${hasProgCabins ? liveTextAttr(`${progPath}.cabins.${idx}.name`) : ''}>${esc(cb.name)}</strong>
                         <span class="cabin-price-tag">${Number(cb.priceDelta) > 0 ? `+${cur}${cb.priceDelta} pp` : Number(cb.priceDelta) < 0 ? `${cur}${cb.priceDelta} pp` : `Standard (${cur}${basePrice} pp)`}</span>
                       </div>
-                      <small>${esc(cb.desc || '')}</small>
+                      <small${hasProgCabins ? liveTextAttr(`${progPath}.cabins.${idx}.desc`) : ''}>${esc(cb.desc || '')}</small>
                     </label>
                   `).join('')}
                 </div>
+                ${liveListAddBtn(`${progPath}.cabins`, 'فئة كابينة', hasProgCabins ? '' : 'cabins', activeProg.basePrice)}
 
                 <div class="three-fields" style="margin-top:20px">
                   <div class="field-group">
@@ -1243,21 +1333,25 @@
                     <small>Combine your cruise with Cairo, Red Sea, Desert or another program</small>
                   </div>
                   <div class="addons-checkbox-grid">
-                    ${programExtensions.map(ad => `
-                      <label class="addon-select-card" for="addon-chk-${esc(ad.id)}">
+                    ${programExtensions.map(ad => {
+                      const isDirectAddon = addonsIdSet.has(ad.id);
+                      const ap = isDirectAddon ? `addons[id=${ad.id}]` : '';
+                      return `
+                      <label class="addon-select-card" for="addon-chk-${esc(ad.id)}"${isDirectAddon ? liveListAttr('addons', 'id:' + ad.id, 'إضافة برنامج', { preview: ad.title }) : ''}>
                         <input type="checkbox" id="addon-chk-${esc(ad.id)}" name="addons" value="${esc(ad.id)}" data-addon-title="${esc(ad.title)}" data-addon-price="${ad.price}" data-addon-unit="${esc(ad.priceUnit)}">
-                        <div class="addon-card-photo">${photo(ad.image, ad.title)}<span class="addon-dur-badge">${esc(ad.duration)}</span></div>
+                        <div class="addon-card-photo">${photo(ad.image, ad.title)}<span class="addon-dur-badge"${ap ? liveTextAttr(`${ap}.duration`) : ''}>${esc(ad.duration)}</span></div>
                         <div class="addon-card-info">
                           <div class="addon-card-top">
-                            <span class="addon-cat">${esc(ad.category)}</span>
+                            <span class="addon-cat"${ap ? liveTextAttr(`${ap}.category`) : ''}>${esc(ad.category)}</span>
                             <strong class="addon-price">+${cur}${ad.price} <small>${esc(ad.priceUnit)}</small></strong>
                           </div>
-                          <h4>${esc(ad.title)}</h4>
-                          <p>${esc(ad.summary)}</p>
+                          <h4${ap ? liveTextAttr(`${ap}.title`) : ''}>${esc(ad.title)}</h4>
+                          <p${ap ? liveTextAttr(`${ap}.summary`) : ''}>${esc(ad.summary)}</p>
                           <span class="addon-check-indicator"><i class="chk-box"></i> Add this program to my journey</span>
                         </div>
                       </label>
-                    `).join('')}
+                    `;
+                    }).join('')}
                   </div>
                 ` : ''}
 
@@ -1267,21 +1361,25 @@
                     <small>Flights, balloons & fast-track airport concierge</small>
                   </div>
                   <div class="addons-checkbox-grid">
-                    ${excursionsAndVip.map(ad => `
-                      <label class="addon-select-card" for="addon-chk-${esc(ad.id)}">
+                    ${excursionsAndVip.map(ad => {
+                      const isDirectAddon = addonsIdSet.has(ad.id);
+                      const ap = isDirectAddon ? `addons[id=${ad.id}]` : '';
+                      return `
+                      <label class="addon-select-card" for="addon-chk-${esc(ad.id)}"${isDirectAddon ? liveListAttr('addons', 'id:' + ad.id, 'إضافة برنامج', { preview: ad.title }) : ''}>
                         <input type="checkbox" id="addon-chk-${esc(ad.id)}" name="addons" value="${esc(ad.id)}" data-addon-title="${esc(ad.title)}" data-addon-price="${ad.price}" data-addon-unit="${esc(ad.priceUnit)}">
-                        <div class="addon-card-photo">${photo(ad.image, ad.title)}<span class="addon-dur-badge">${esc(ad.duration)}</span></div>
+                        <div class="addon-card-photo">${photo(ad.image, ad.title)}<span class="addon-dur-badge"${ap ? liveTextAttr(`${ap}.duration`) : ''}>${esc(ad.duration)}</span></div>
                         <div class="addon-card-info">
                           <div class="addon-card-top">
-                            <span class="addon-cat">${esc(ad.category)}</span>
+                            <span class="addon-cat"${ap ? liveTextAttr(`${ap}.category`) : ''}>${esc(ad.category)}</span>
                             <strong class="addon-price">+${cur}${ad.price} <small>${esc(ad.priceUnit)}</small></strong>
                           </div>
-                          <h4>${esc(ad.title)}</h4>
-                          <p>${esc(ad.summary)}</p>
+                          <h4${ap ? liveTextAttr(`${ap}.title`) : ''}>${esc(ad.title)}</h4>
+                          <p${ap ? liveTextAttr(`${ap}.summary`) : ''}>${esc(ad.summary)}</p>
                           <span class="addon-check-indicator"><i class="chk-box"></i> Add to my booking</span>
                         </div>
                       </label>
-                    `).join('')}
+                    `;
+                    }).join('')}
                   </div>
                 ` : ''}
               </fieldset>
@@ -1496,8 +1594,8 @@
               ${esc(place.title)}
             </div>
             <div class="nct-hero-badges">
-              <span class="nct-badge-gold">📍 ${esc(place.location)}</span>
-              <span class="nct-badge-glass">⏱ ${esc(place.duration || 'Half Day Guided Tour')}</span>
+              <span class="nct-badge-gold">📍 <nt-tx${liveTextAttr(`sightseeingPlaces[id=${place.id}].location`)}>${esc(place.location)}</nt-tx></span>
+              <span class="nct-badge-glass">⏱ <nt-tx${liveTextAttr(`sightseeingPlaces[id=${place.id}].duration`)}>${esc(place.duration || 'Half Day Guided Tour')}</nt-tx></span>
               <span class="nct-badge-glass">🏛 Private Egyptologist Included</span>
             </div>
             <h1><span${liveTextAttr(`sightseeingPlaces[id=${place.id}].title`)}>${esc(place.title)}</span></h1>
@@ -1515,7 +1613,7 @@
               ${photo(place.image, place.title)}
               <div class="sight-detail-price-pill">
                 <small>GUIDED EXCURSION PRICE</small>
-                <strong>${cur}${place.price} <span>/ ${esc(place.priceUnit || 'per person')}</span></strong>
+                <strong>${cur}${place.price} <span>/ <nt-tx${liveTextAttr(`sightseeingPlaces[id=${place.id}].priceUnit`)}>${esc(place.priceUnit || 'per person')}</nt-tx></span></strong>
               </div>
             </div>
 
@@ -1538,7 +1636,7 @@
                   <article class="nct-daycard ${i === 0 ? 'hot' : ''}">
                     <div class="nct-dc-num"><small>Step</small><b>0${i + 1}</b></div>
                     <div class="nct-dc-body">
-                      <div class="nct-dc-text"><p>${esc(step)}</p></div>
+                      <div class="nct-dc-text"><p${Array.isArray(place.itinerarySteps) ? liveTextAttr(`sightseeingPlaces[id=${place.id}].itinerarySteps.${i}`) : ''}>${esc(step)}</p></div>
                     </div>
                   </article>
                 `).join('')}
@@ -1751,40 +1849,42 @@
             ${sectionTitle(esc(blk.eyebrow || 'HIGHLIGHTS'), `<span${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.heading`, true)}>${blk.heading || 'Key Highlights'}</span>`)}
             <div class="three-notes">
               ${(blk.items || []).map((it, idx) => `
-                <div>
+                <div${liveListAttr(`customPages[id=${page.id}].blocks.${bIdx}.items`, 'idx:' + idx, 'بطاقة عرض', { preview: it.title })}>
                   <b>0${idx + 1}</b>
-                  <h3>${esc(it.title)}</h3>
-                  <p>${esc(it.desc || it.text || '')}</p>
+                  <h3${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.items.${idx}.title`)}>${esc(it.title)}</h3>
+                  <p${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.items.${idx}.${it.desc !== undefined ? 'desc' : 'text'}`)}>${esc(it.desc || it.text || '')}</p>
                 </div>
               `).join('')}
             </div>
+            ${liveListAddBtn(`customPages[id=${page.id}].blocks.${bIdx}.items`, 'بطاقة عرض')}
           </section>`;
         case 'cta-banner':
           return `<section class="wrap section-space" style="text-align:center">
-            ${sectionTitle('TAILOR-MADE DISCOVERY', `<span${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.heading`, true)}>${blk.heading || 'Plan Your Journey'}</span>`, esc(blk.body || ''))}
-            ${button(esc(blk.btnText || 'Plan Your Journey'), blk.btnUrl || 'plan-your-journey', 'btn-gold')}
+            ${sectionTitle('TAILOR-MADE DISCOVERY', `<span${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.heading`, true)}>${blk.heading || 'Plan Your Journey'}</span>`, `<nt-tx${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.body`)}>${esc(blk.body || '')}</nt-tx>`)}
+            ${button(`<nt-tx${blk.btnText ? liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.btnText`) : ''}>${esc(blk.btnText || 'Plan Your Journey')}</nt-tx>`, blk.btnUrl || 'plan-your-journey', 'btn-gold')}
           </section>`;
         case 'editorial':
           return `<section class="wrap section-space">
             <div class="editorial-lede">
-              ${label(esc(blk.eyebrow || pageEyebrow || 'NILETRAILS'))}
+              ${label(`<nt-tx${blk.eyebrow ? liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.eyebrow`) : ''}>${esc(blk.eyebrow || pageEyebrow || 'NILETRAILS')}</nt-tx>`)}
               <h2${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.heading`, true)}>${blk.heading || esc(page.title)}</h2>
               <p${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.body`)}>${esc(blk.body || '')}</p>
-              ${blk.ctaText ? `<div style="margin-top:28px">${button(esc(blk.ctaText), blk.ctaUrl || 'nile-cruises', 'btn-gold')}</div>` : ''}
+              ${blk.ctaText ? `<div style="margin-top:28px">${button(`<nt-tx${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.ctaText`)}>${esc(blk.ctaText)}</nt-tx>`, blk.ctaUrl || 'nile-cruises', 'btn-gold')}</div>` : ''}
             </div>
           </section>`;
         case 'highlights':
           return `<section class="wrap section-space" style="padding-top:20px">
-            ${sectionTitle(esc(blk.eyebrow || 'HIGHLIGHTS'), blk.heading || 'What makes this <em>special.</em>')}
+            ${sectionTitle(esc(blk.eyebrow || 'HIGHLIGHTS'), `<nt-tx${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.heading`, true)}>${blk.heading || 'What makes this <em>special.</em>'}</nt-tx>`)}
             <div class="three-notes">
               ${(blk.items || []).map((it, idx) => `
-                <div>
+                <div${liveListAttr(`customPages[id=${page.id}].blocks.${bIdx}.items`, 'idx:' + idx, 'ميزة بارزة', { preview: it.title })}>
                   <b>${esc(it.num || '0' + (idx + 1))}</b>
-                  <h3>${esc(it.title)}</h3>
-                  <p>${esc(it.text || it.desc || '')}</p>
+                  <h3${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.items.${idx}.title`)}>${esc(it.title)}</h3>
+                  <p${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.items.${idx}.${it.text !== undefined ? 'text' : 'desc'}`)}>${esc(it.text || it.desc || '')}</p>
                 </div>
               `).join('')}
             </div>
+            ${liveListAddBtn(`customPages[id=${page.id}].blocks.${bIdx}.items`, 'ميزة بارزة')}
           </section>`;
         case 'programs-showcase': {
           const picked = (blk.cruiseSlugs && blk.cruiseSlugs.length)
@@ -1792,7 +1892,7 @@
             : allVessels.slice(0, 3);
           return `<section class="featured-section section-space">
             <div class="wrap">
-              ${sectionTitle(esc(blk.eyebrow || 'FEATURED CRUISES & PROGRAMS'), blk.heading || 'Curated <em>Sailing Programs.</em>', esc(blk.sub || ''))}
+              ${sectionTitle(esc(blk.eyebrow || 'FEATURED CRUISES & PROGRAMS'), `<nt-tx${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.heading`, true)}>${blk.heading || 'Curated <em>Sailing Programs.</em>'}</nt-tx>`, esc(blk.sub || ''))}
               <div class="card-grid three">
                 ${picked.map(v => miniCard(v, v.kind || 'cruise')).join('')}
               </div>
@@ -1802,7 +1902,7 @@
         case 'addons-showcase': {
           const places = (st.sightseeingPlaces || []).filter(a => a.enabled !== false);
           return `<section class="wrap section-space">
-            ${sectionTitle(esc(blk.eyebrow || 'SIGHTSEEING & ADD-ONS'), blk.heading || 'Customize with <em>Guided Tours.</em>', esc(blk.sub || ''))}
+            ${sectionTitle(esc(blk.eyebrow || 'SIGHTSEEING & ADD-ONS'), `<nt-tx${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.heading`, true)}>${blk.heading || 'Customize with <em>Guided Tours.</em>'}</nt-tx>`, esc(blk.sub || ''))}
             <div class="sight-cards-grid">
               ${places.slice(0, 6).map(pl => renderSightseeingCard(pl, { showAddToggle: false })).join('')}
             </div>
@@ -1810,19 +1910,20 @@
         }
         case 'faq':
           return `<section class="wrap section-space">
-            ${sectionTitle(esc(blk.eyebrow || 'FREQUENTLY ASKED QUESTIONS'), blk.heading || 'Good to <em>know.</em>')}
+            ${sectionTitle(esc(blk.eyebrow || 'FREQUENTLY ASKED QUESTIONS'), `<nt-tx${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.heading`, true)}>${blk.heading || 'Good to <em>know.</em>'}</nt-tx>`)}
             <div class="accordion travel-accordion">
               ${(blk.items || []).map((it, idx) => `
-                <details ${idx === 0 ? 'open' : ''}>
-                  <summary>${esc(it.q)}<span>+</span></summary>
-                  <p>${esc(it.a)}</p>
+                <details ${idx === 0 ? 'open' : ''}${liveListAttr(`customPages[id=${page.id}].blocks.${bIdx}.items`, 'idx:' + idx, 'سؤال مخصص', { preview: it.q })}>
+                  <summary><b class="faq-q-text"${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.items.${idx}.q`)}>${esc(it.q)}</b><span>+</span></summary>
+                  <p${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.items.${idx}.a`)}>${esc(it.a)}</p>
                 </details>
               `).join('')}
             </div>
+            ${liveListAddBtn(`customPages[id=${page.id}].blocks.${bIdx}.items`, 'سؤال مخصص')}
           </section>`;
         case 'booking-form':
           return `<section class="wrap section-space" style="text-align:center">
-            ${sectionTitle('READY TO SAIL?', blk.heading || 'Reserve Your Program', esc(blk.sub || ''))}
+            ${sectionTitle('READY TO SAIL?', `<nt-tx${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.heading`, true)}>${blk.heading || 'Reserve Your Program'}</nt-tx>`, esc(blk.sub || ''))}
             ${button('Explore Nile Cruises & Book Program', 'nile-cruises', 'btn-gold')}
           </section>`;
         default:
@@ -1954,7 +2055,7 @@
   function renderPageFaqSection(scope = 'all') {
     const st = CMS.getState();
     const allEnabled = (st.faqs || CMS.DEFAULT_FAQS || []).filter(f => f && f.enabled !== false);
-    if (!allEnabled.length) return '';
+    if (!allEnabled.length) return isLiveEdit() ? `<section class="faq-section wrap section-space" id="page-faq">${liveListAddBtn('faqs', 'سؤال شائع')}</section>` : '';
 
     const seen = new Set();
     const picked = [];
@@ -2001,17 +2102,730 @@
         </div>
         <div class="faq-list">
           ${visibleFaqs.map((faq, idx) => `
-            <details class="faq-item"${idx === 0 ? ' open' : ''}>
+            <details class="faq-item"${idx === 0 ? ' open' : ''}${liveListAttr('faqs', 'id:' + faq.id, 'سؤال شائع', { preview: faq.question })}>
               <summary><b class="faq-q-text"${liveTextAttr(`faqs[id=${faq.id}].question`)}>${esc(faq.question)}</b>${isLiveEdit() ? `<button type="button" class="nt-live-faq-edit" data-live-edit-sec="faq:${esc(faq.id)}:${esc(scope)}">✏ تعديل</button>` : ''}</summary>
               <div class="faq-answer"><p${liveTextAttr(`faqs[id=${faq.id}].answer`)}>${esc(faq.answer)}</p></div>
             </details>
           `).join('')}
         </div>
+        ${liveListAddBtn('faqs', 'سؤال شائع')}
       </section>
     `;
   }
 
-  function route() {
+  const UTX_SKIP_SELECTOR = [
+    '.nt-live-toolbar', '.nt-live-sec-bar', '.nt-live-inline-bar', '.nt-live-popover',
+    '.nt-live-card-ctrl', '.nt-live-faq-edit', '.nt-live-hidden-stub', '.floating-admin-bar',
+    '.nt-live-list-add-wrap', '.nt-live-list-add', '#nt-el-studio-bar',
+    '.nt-preview-stage', '.nt-preview-bezel', '.adm-shell', 'dialog',
+    'script', 'style', 'noscript', 'svg', 'path', 'img', 'video', 'iframe',
+    'input', 'textarea', 'select', 'option', 'datalist',
+    '#bc-top-label', '#bc-season-pill', '#bc-top-price', '#bc-top-breakdown',
+    '#sum-prog-title', '#sum-season-name', '#sum-cabin-name', '#sum-guests',
+    '#sum-base-calc', '#sum-extras-count', '#sum-extras-subtotal', '#sum-addons-list', '#sum-grand-total',
+    '#bf-inline-total', '#bf-inline-sub', '#sight-form-total', '#sight-form-sub',
+    '#results-count', '#step-label', '#planner-error', '#bf-error-msg', '#contact-feedback',
+    '.nct-pv', '.spc-add-btn-text', '.save-button', '#menu-toggle', '.nct-dc-num b',
+    '.addon-price', '.spc-price-box strong'
+  ].join(',');
+
+  const UTX_ATOMIC_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P', 'LI', 'BLOCKQUOTE', 'DT', 'DD', 'FIGCAPTION', 'LEGEND']);
+  const UTX_PURE_INLINE_TAGS = new Set(['EM', 'STRONG', 'B', 'I', 'U', 'SMALL', 'MARK', 'BR']);
+
+  function utxHash(str) {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(36);
+  }
+
+  function isMeaningfulUtxText(str) {
+    const t = String(str || '').replace(/\s+/g, ' ').trim();
+    if (t.length < 2) return false;
+    if (/^[↗↙↖↘→←↑↓×✕✓✔•·/|\-+*:,.()[\]★☆♡♥\d\s$€£%]+$/.test(t)) return false;
+    return /[A-Za-z\u0600-\u06FF\u00C0-\u024F]/.test(t);
+  }
+
+  function sanitizeLiveHtml(html) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = String(html ?? '');
+    const scrub = (node) => {
+      [...node.childNodes].forEach(ch => {
+        if (ch.nodeType !== 1) return;
+        const tag = ch.tagName.toUpperCase();
+        if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'IFRAME' || tag === 'OBJECT' || tag === 'EMBED') {
+          ch.remove();
+          return;
+        }
+        [...ch.attributes].forEach(attr => {
+          if (/^on/i.test(attr.name) || (attr.name === 'href' && /^\s*javascript:/i.test(attr.value))) {
+            ch.removeAttribute(attr.name);
+          }
+        });
+        scrub(ch);
+      });
+    };
+    scrub(tpl.content);
+    return tpl.innerHTML.trim();
+  }
+
+  function syncToolbarHistoryButtons() {
+    const adm = window.NileTrailsAdmin;
+    $$('[data-live-undo]').forEach(b => { b.disabled = !adm?.canUndo?.(); });
+    $$('[data-live-redo]').forEach(b => { b.disabled = !adm?.canRedo?.(); });
+  }
+
+  function applyAndDecorateUniversalText(rootEl, forceLive) {
+    if (!rootEl) return;
+    const overrides = CMS.getState().textOverrides || {};
+    const live = forceLive !== undefined ? forceLive : isLiveEdit();
+    const routeScope = location.hash.replace(/^#\/?/, '').split('?')[0].replace(/^\/+|\/+$/g, '') || 'home';
+    const occCounts = new Map();
+
+    const getRegion = (el) => {
+      if (el.closest('header.site-header')) return 'header';
+      if (el.closest('footer.site-footer')) return 'footer';
+      return routeScope;
+    };
+
+    const getLandmarkId = (el, region) => {
+      const domEl = el.closest('[data-nt-dom-id]');
+      if (domEl && domEl.dataset.ntDomId) return domEl.dataset.ntDomId;
+      const lm = el.closest('[id]');
+      if (lm && lm.id && lm.id !== 'app' && lm.id !== 'main') return lm.id;
+      return region;
+    };
+
+    const nextUtxKey = (hostEl, sourceText) => {
+      const region = getRegion(hostEl);
+      const landmark = getLandmarkId(hostEl, region);
+      const norm = String(sourceText || '').replace(/\s+/g, ' ').trim();
+      const base = `${region}::${landmark}::h_${utxHash(norm)}`;
+      const count = occCounts.get(base) || 0;
+      occCounts.set(base, count + 1);
+      return `${base}_${count}`;
+    };
+
+    const isPureAtomicInlineBlock = (el) => {
+      if (!UTX_ATOMIC_TAGS.has(el.tagName)) return false;
+      if (el.querySelector('[data-live-text], [data-utx-key]')) return false;
+      const kids = el.querySelectorAll('*');
+      for (const ch of kids) {
+        if (!UTX_PURE_INLINE_TAGS.has(ch.tagName)) return false;
+      }
+      return true;
+    };
+
+    const walk = (node) => {
+      if (!node || node.nodeType !== 1) return;
+      if (node.matches(UTX_SKIP_SELECTOR) || node.hasAttribute('data-live-text') || node.hasAttribute('data-utx-key')) return;
+
+      if (isPureAtomicInlineBlock(node)) {
+        const rawTxt = node.textContent;
+        if (!isMeaningfulUtxText(rawTxt)) return;
+        const key = nextUtxKey(node, rawTxt);
+        const hasInlineTags = node.children.length > 0;
+        if (overrides[key] !== undefined) {
+          if (hasInlineTags || /<(em|strong|b|i|u|small|br)\b/i.test(overrides[key])) {
+            node.innerHTML = sanitizeLiveHtml(overrides[key]);
+          } else {
+            node.textContent = overrides[key];
+          }
+        }
+        if (live) {
+          node.dataset.utxKey = key;
+          if (hasInlineTags) node.dataset.utxHtml = '1';
+          if (!node.title) node.title = 'انقر للتعديل المباشر على النص (Enter للحفظ)';
+        }
+        return;
+      }
+
+      const childNodes = [...node.childNodes];
+      for (const ch of childNodes) {
+        if (ch.nodeType === 1) {
+          walk(ch);
+        } else if (ch.nodeType === 3) {
+          const val = ch.nodeValue;
+          if (!isMeaningfulUtxText(val)) continue;
+          const lead = (val.match(/^\s*/) || [''])[0];
+          const trail = (val.match(/\s*$/) || [''])[0];
+          const core = val.trim();
+          const key = nextUtxKey(node, core);
+          const resolved = overrides[key] !== undefined ? String(overrides[key]) : core;
+          if (live) {
+            const tx = document.createElement('nt-tx');
+            tx.dataset.utxKey = key;
+            tx.title = 'انقر للتعديل المباشر على النص (Enter للحفظ)';
+            tx.textContent = resolved;
+            const frag = document.createDocumentFragment();
+            if (lead) frag.appendChild(document.createTextNode(lead));
+            frag.appendChild(tx);
+            if (trail) frag.appendChild(document.createTextNode(trail));
+            ch.replaceWith(frag);
+          } else if (overrides[key] !== undefined) {
+            ch.nodeValue = lead + resolved + trail;
+          }
+        }
+      }
+    };
+
+    walk(rootEl);
+  }
+
+  function enableInlineEditingIn(containerEl) {
+    if (!containerEl || !isLiveEdit()) return;
+    const adm = window.NileTrailsAdmin;
+    const subMode = adm?.getSubMode ? adm.getSubMode() : 'select';
+
+    $$('[data-live-text], [data-utx-key]', containerEl).forEach(el => {
+      if (el.dataset.ntBoundInline === '1') return;
+      el.dataset.ntBoundInline = '1';
+
+      const activateEditor = (e) => {
+        if (e.target.closest('button.nt-live-card-ctrl, button.nt-live-faq-edit')) return;
+        if (e.type === 'click' && el.isContentEditable) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        if (e.type !== (subMode === 'select' ? 'click' : 'dblclick')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (el.isContentEditable) return;
+
+        const path = el.dataset.liveText || '';
+        const utxKey = el.dataset.utxKey || '';
+        const isHtml = el.dataset.liveHtml === '1' || el.dataset.utxHtml === '1';
+        const origContent = isHtml ? el.innerHTML : el.textContent;
+        hideElementStudioBar();
+        el.contentEditable = 'true';
+        el.classList.add('nt-live-editing-now');
+        el.focus();
+
+        let editDone = false;
+        const finishEdit = async (commit) => {
+          if (editDone) return;
+          editDone = true;
+          el.removeEventListener('blur', onBlur);
+          el.removeEventListener('keydown', onKey);
+          el.removeEventListener('keyup', onKeyUp);
+          el.contentEditable = 'false';
+          el.classList.remove('nt-live-editing-now');
+          if (!commit) {
+            if (isHtml) el.innerHTML = origContent;
+            else el.textContent = origContent;
+            return;
+          }
+          const rawNext = isHtml ? sanitizeLiveHtml(el.innerHTML) : el.textContent.trim();
+          if (rawNext !== String(origContent).trim() && rawNext.length > 0) {
+            const savePromise = path
+              ? adm?.saveInlinePath?.(path, rawNext, null)
+              : (utxKey ? adm?.saveTextOverride?.(utxKey, rawNext, null) : null);
+            if (path) {
+              $$('[data-live-text]', $('#app')).forEach(other => {
+                if (other === el || other.dataset.liveText !== path) return;
+                if (isHtml) other.innerHTML = rawNext;
+                else other.textContent = rawNext;
+              });
+            }
+            syncToolbarHistoryButtons();
+            await savePromise;
+            syncToolbarHistoryButtons();
+          } else if (!rawNext.length) {
+            if (isHtml) el.innerHTML = origContent;
+            else el.textContent = origContent;
+          }
+        };
+
+        const onBlur = () => finishEdit(true);
+        const onKey = (ke) => {
+          ke.stopPropagation();
+          if (ke.key === 'Escape') {
+            ke.preventDefault();
+            finishEdit(false);
+            el.blur();
+          } else if (ke.key === 'Enter' && !ke.shiftKey) {
+            ke.preventDefault();
+            finishEdit(true);
+            el.blur();
+          }
+        };
+        const onKeyUp = (ke) => {
+          if (ke.key === ' ' && el.closest('button, summary')) {
+            ke.preventDefault();
+          }
+          ke.stopPropagation();
+        };
+
+        el.addEventListener('blur', onBlur);
+        el.addEventListener('keydown', onKey);
+        el.addEventListener('keyup', onKeyUp);
+      };
+
+      el.addEventListener('click', activateEditor);
+      if (subMode === 'browse') {
+        el.addEventListener('dblclick', activateEditor);
+      }
+    });
+  }
+
+  /* =======================================================================
+     UNIVERSAL ELEMENT DELETE & ADD-SAME-TYPE ENGINE (domEdits + Inspector)
+     ======================================================================= */
+  const LIVE_CHROME_SEL = '.nt-live-sec-bar, .nt-live-inline-bar, .nt-live-card-ctrl, .nt-live-faq-edit, .nt-live-list-add-wrap, .nt-live-toolbar, .nt-live-popover, #nt-el-studio-bar';
+  const SHELL_PROTECTED_SEL = 'html, body, #app, main, header.site-header, .header-inner, .logo, footer.site-footer, .nt-live-sec, .hero-video-wrap, .nct-hero-shade, .tile-shade, .hero-gradient';
+
+  function getCurrentRouteScope() {
+    return location.hash.replace(/^#\/?/, '').split('?')[0].replace(/^\/+|\/+$/g, '') || 'home';
+  }
+
+  function isLiveChromeElement(el) {
+    return Boolean(el && el.nodeType === 1 && el.matches?.(LIVE_CHROME_SEL));
+  }
+
+  function getSemanticChildren(parent) {
+    if (!parent) return [];
+    const out = [];
+    for (const ch of parent.children) {
+      if (isLiveChromeElement(ch)) continue;
+      if (ch.classList?.contains('nt-live-sec')) {
+        for (const inner of ch.children) {
+          if (!isLiveChromeElement(inner)) out.push(inner);
+        }
+      } else {
+        out.push(ch);
+      }
+    }
+    return out;
+  }
+
+  function getSemanticParent(el) {
+    if (!el || !el.parentElement) return null;
+    if (el.parentElement.classList?.contains('nt-live-sec')) {
+      return el.parentElement.parentElement;
+    }
+    return el.parentElement;
+  }
+
+  function resolveDomRegionRoot(regionKey) {
+    if (regionKey === 'header') return $('#app > header.site-header > .header-inner');
+    if (regionKey === 'footer') return $('#app > footer.site-footer');
+    return $('#app > main#main');
+  }
+
+  function resolveDomRegionForEl(el) {
+    const hdr = $('#app > header.site-header > .header-inner');
+    if (hdr && hdr.contains(el)) return { key: 'header', root: hdr };
+    const ftr = $('#app > footer.site-footer');
+    if (ftr && ftr.contains(el)) return { key: 'footer', root: ftr };
+    return { key: getCurrentRouteScope(), root: $('#app > main#main') };
+  }
+
+  function buildDomDescriptor(el, regionRoot) {
+    if (!el || !regionRoot || !regionRoot.contains(el)) return null;
+    if (el.dataset?.ntDomId) return { domId: el.dataset.ntDomId, insertIndex: getSemanticChildren(getSemanticParent(el)).indexOf(el) };
+    const steps = [];
+    let cur = el;
+    let anchorId = '';
+    while (cur && cur !== regionRoot) {
+      if (cur !== el && cur.id && cur.id !== 'app' && cur.id !== 'main' && regionRoot.querySelectorAll('#' + CSS.escape(cur.id)).length === 1) {
+        anchorId = cur.id;
+        break;
+      }
+      const pNode = getSemanticParent(cur);
+      if (!pNode) break;
+      const kids = getSemanticChildren(pNode);
+      const idx = kids.indexOf(cur);
+      if (idx < 0) return null;
+      steps.unshift({ idx, tag: cur.tagName });
+      cur = pNode;
+    }
+    const parentKids = getSemanticChildren(getSemanticParent(el));
+    return { anchorId, steps, insertIndex: Math.max(0, parentKids.indexOf(el)) };
+  }
+
+  function resolveDomTarget(regionRoot, rawSel) {
+    if (!regionRoot || !rawSel) return null;
+    let desc;
+    try { desc = typeof rawSel === 'string' ? JSON.parse(rawSel) : rawSel; } catch { return null; }
+    if (!desc) return null;
+    if (desc.isRoot) return regionRoot;
+    if (desc.domId) return regionRoot.querySelector(`[data-nt-dom-id="${CSS.escape(desc.domId)}"]`);
+    let cur = desc.anchorId ? regionRoot.querySelector('#' + CSS.escape(desc.anchorId)) : regionRoot;
+    if (!cur) return null;
+    for (const step of (desc.steps || [])) {
+      const kids = getSemanticChildren(cur);
+      let next = kids[step.idx];
+      if (!next && step.tag) next = kids.find(k => k.tagName === step.tag);
+      if (!next) return null;
+      cur = next;
+    }
+    return cur;
+  }
+
+  function parseInsertIndex(rawSel) {
+    try {
+      const d = typeof rawSel === 'string' ? JSON.parse(rawSel) : rawSel;
+      return Number.isInteger(d?.insertIndex) ? d.insertIndex : -1;
+    } catch { return -1; }
+  }
+
+  function sanitizeElementTemplateHtml(el) {
+    const clone = el.cloneNode(true);
+    clone.classList?.remove('nt-el-hover-target', 'nt-el-locked-target', 'nt-live-editing-now', 'nt-live-flash');
+    $$(LIVE_CHROME_SEL, clone).forEach(n => n.remove());
+    $$('script, iframe, object, embed', clone).forEach(n => n.remove());
+    $$('nt-tx', clone).forEach(tx => {
+      tx.replaceWith(document.createTextNode(tx.textContent));
+    });
+    const stripNodeAttrs = (node) => {
+      if (node.nodeType !== 1) return;
+      [...node.attributes].forEach(attr => {
+        if (/^on/i.test(attr.name) || (attr.name === 'href' && /^\s*javascript:/i.test(attr.value))) {
+          node.removeAttribute(attr.name);
+        }
+      });
+      ['data-utx-key', 'data-utx-html', 'data-live-text', 'data-live-html', 'data-live-list', 'data-live-item',
+       'data-live-kind', 'data-live-fallback', 'data-live-preview', 'data-live-base-price',
+       'data-nt-bound-inline', 'data-nt-sec-bound', 'data-nt-dom-id', 'contenteditable', 'spellcheck'].forEach(a => node.removeAttribute(a));
+      if (node.getAttribute('title')?.includes('انقر للتعديل')) node.removeAttribute('title');
+      [...node.children].forEach(stripNodeAttrs);
+    };
+    stripNodeAttrs(clone);
+    return clone.outerHTML;
+  }
+
+  function createElementFromTemplate(html, newId) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = String(html || '').trim();
+    const el = tpl.content.firstElementChild;
+    if (!el) return null;
+    const suffix = String(newId || Date.now()).slice(-5);
+    if (el.id) el.id = `${el.id}-${suffix}`;
+    $$('[id]', el).forEach(child => { child.id = `${child.id}-${suffix}`; });
+    el.dataset.ntDomId = newId;
+    return el;
+  }
+
+  function applyDomEdits(appRoot) {
+    const st = CMS.getState();
+    const editsByRegion = st.domEdits;
+    if (!editsByRegion || typeof editsByRegion !== 'object') return;
+    const scope = getCurrentRouteScope();
+    if (scope.startsWith('admin')) return;
+    const pairs = [
+      ['header', resolveDomRegionRoot('header')],
+      [scope, resolveDomRegionRoot(scope)],
+      ['footer', resolveDomRegionRoot('footer')]
+    ];
+    for (const [regionKey, regionRoot] of pairs) {
+      const ops = editsByRegion[regionKey];
+      if (!regionRoot || !Array.isArray(ops) || !ops.length) continue;
+      for (const op of ops) {
+        if (op.op === 'delete') {
+          const t = resolveDomTarget(regionRoot, op.targetSel);
+          if (t && !t.matches?.(SHELL_PROTECTED_SEL)) {
+            const semWrap = t.parentElement?.classList?.contains('nt-live-sec') ? t.parentElement : null;
+            t.remove();
+            if (semWrap && getSemanticChildren(semWrap).length === 0) semWrap.hidden = true;
+          }
+        } else if (op.op === 'insert_after' || op.op === 'insert_template') {
+          const newEl = createElementFromTemplate(op.html, op.newId || ('nt-el-' + op.id));
+          if (!newEl) continue;
+          const anchor = op.targetSel ? resolveDomTarget(regionRoot, op.targetSel) : null;
+          if (anchor && !anchor.matches?.(SHELL_PROTECTED_SEL)) {
+            const anchorHost = anchor.parentElement?.classList?.contains('nt-live-sec') ? anchor.parentElement : anchor;
+            anchorHost.after(newEl);
+            continue;
+          }
+          const parentNode = op.parentSel ? resolveDomTarget(regionRoot, op.parentSel) : null;
+          if (parentNode) {
+            const kids = getSemanticChildren(parentNode);
+            const idx = parseInsertIndex(op.targetSel);
+            if (idx >= 0 && idx < kids.length) {
+              const slot = kids[idx].parentElement?.classList?.contains('nt-live-sec') ? kids[idx].parentElement : kids[idx];
+              slot.before(newEl);
+            } else if (kids.length > 0) {
+              const last = kids[kids.length - 1];
+              const tail = last.parentElement?.classList?.contains('nt-live-sec') ? last.parentElement : last;
+              tail.after(newEl);
+            } else {
+              parentNode.prepend(newEl);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  function inferElementKindLabel(el) {
+    if (!el) return 'عنصر';
+    if (el.dataset?.liveKind) return el.dataset.liveKind;
+    if (el.matches('.nct-hl')) return 'بطاقة ميزة';
+    if (el.matches('.nct-pcard')) return 'بطاقة تسعير';
+    if (el.matches('.nct-pol')) return 'صندوق سياسة';
+    if (el.matches('.field-group, .contact-form label')) return 'حقل نموذج';
+    if (el.matches('.three-notes > div, .planner-benefits > div')) return 'بطاقة ملاحظة';
+    if (el.matches('a.button, button, .btn-gold, .btn-outline, .btn-glass')) return 'زر إجراء';
+    if (el.matches('a')) return 'رابط';
+    if (el.matches('h1, h2, h3, h4, h5, h6')) return 'عنوان';
+    if (el.matches('p')) return 'فقرة نصية';
+    if (el.matches('li')) return 'بند قائمة';
+    if (el.matches('article')) return 'بطاقة عنصر';
+    if (el.matches('section')) return 'قسم كامل';
+    if (el.matches('.photo-frame, figure, img')) return 'صورة';
+    return `عنصر ${el.tagName.toLowerCase()}`;
+  }
+
+  const EL_INLINE_LEAF_SEL = 'nt-tx, span:not(.signature-points > span), em, strong, b, i, u, small, svg, path, circle, rect, line, polygon';
+  const EL_SEMANTIC_BLOCK_SEL = 'h1, h2, h3, h4, h5, h6, p, li, dt, dd, blockquote, a, button, label.cabin-radio-card, label.addon-select-card, label.field-group, label.spc-add-journey-lbl, label.check-field, div.nct-hl, div.nct-pcard, div.nct-dc-meals-row, article, details, figure, section, div.field-group, div.three-notes > div, div.planner-benefits > div';
+
+  function resolveEditableElement(rawTarget) {
+    if (!rawTarget) return null;
+    const start = rawTarget.nodeType === 1 ? rawTarget : rawTarget.parentElement;
+    if (!start || !$('#app')?.contains(start)) return null;
+    if (start.closest(LIVE_CHROME_SEL) || start.closest('dialog, .adm-shell, #cms-toast')) return null;
+    let el = start;
+    if (el.matches(EL_INLINE_LEAF_SEL) && !el.hasAttribute('data-live-item')) {
+      const parentItem = el.closest('[data-live-item]');
+      const sem = el.closest(EL_SEMANTIC_BLOCK_SEL);
+      el = (sem && $('#app').contains(sem)) ? sem : (parentItem || el);
+    }
+    if (el.matches(SHELL_PROTECTED_SEL)) return null;
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
+      el = el.closest('.field-group, label') || el.parentElement;
+    }
+    if (!el || el.matches(SHELL_PROTECTED_SEL) || !$('#app')?.contains(el)) return null;
+    return el;
+  }
+
+  function getFallbackDataForElement(el) {
+    const key = el?.dataset?.liveFallback || '';
+    if (!key) return undefined;
+    return getSampleForListPath(el.dataset.liveList, key, el.dataset.liveBasePrice || 750);
+  }
+
+  let studioTrackedEl = null;
+  let studioLocked = false;
+  let studioHoverTimer = null;
+
+  function hideElementStudioBar() {
+    if (studioTrackedEl) {
+      studioTrackedEl.classList?.remove('nt-el-hover-target', 'nt-el-locked-target');
+      studioTrackedEl = null;
+    }
+    studioLocked = false;
+    const bar = document.getElementById('nt-el-studio-bar');
+    if (bar) bar.hidden = true;
+  }
+
+  function ensureElementStudioBar() {
+    let bar = document.getElementById('nt-el-studio-bar');
+    if (bar) return bar;
+    bar = document.createElement('div');
+    bar.id = 'nt-el-studio-bar';
+    bar.className = 'nt-el-studio-bar';
+    bar.dir = 'rtl';
+    bar.hidden = true;
+    bar.innerHTML = `
+      <span class="nt-el-kind" id="nt-el-kind-lbl">عنصر</span>
+      <button type="button" data-el-act="list-item" id="nt-el-list-btn" hidden title="تحديد البطاقة الكاملة">⬆ البطاقة</button>
+      <button type="button" data-el-act="parent" title="تحديد العنصر الأب">⬆ الأب</button>
+      <button type="button" data-el-act="duplicate" title="إضافة عنصر جديد من نفس النوع">+ مثله</button>
+      <button type="button" class="is-danger" data-el-act="delete" title="حذف هذا العنصر">🗑 حذف</button>
+    `;
+    document.body.appendChild(bar);
+
+    bar.addEventListener('mouseenter', () => clearTimeout(studioHoverTimer));
+    bar.addEventListener('mouseleave', () => {
+      if (!studioLocked) {
+        studioHoverTimer = setTimeout(hideElementStudioBar, 220);
+      }
+    });
+
+    bar.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-el-act]');
+      if (!btn || !studioTrackedEl) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const act = btn.dataset.elAct;
+      const adm = window.NileTrailsAdmin;
+
+      if (act === 'parent') {
+        const up = getSemanticParent(studioTrackedEl);
+        if (up && !up.matches(SHELL_PROTECTED_SEL) && $('#app')?.contains(up)) {
+          showElementStudioFor(up, studioLocked);
+        } else {
+          adm?.showToast?.('هذا أعلى عنصر قابل للتحديد', 'error');
+        }
+        return;
+      }
+
+      if (act === 'list-item') {
+        const card = studioTrackedEl.closest('[data-live-item]');
+        if (card) showElementStudioFor(card, studioLocked);
+        return;
+      }
+
+      const target = studioTrackedEl;
+      const elKind = inferElementKindLabel(target);
+      hideElementStudioBar();
+
+      if (act === 'duplicate') {
+        if (target.dataset?.liveList && target.dataset?.liveItem) {
+          const fb = getFallbackDataForElement(target);
+          await adm?.addListItemOfType?.(target.dataset.liveList, target.dataset.liveItem, {
+            kindLabel: elKind,
+            fallbackData: fb,
+            sampleItem: getSampleForListPath(target.dataset.liveList, target.dataset.liveFallback, target.dataset.liveBasePrice)
+          }, () => route({ preserveScroll: true }));
+        } else {
+          const reg = resolveDomRegionForEl(target);
+          const targetSel = JSON.stringify(buildDomDescriptor(target, reg.root));
+          const semP = getSemanticParent(target);
+          const parentSel = JSON.stringify(semP === reg.root ? { isRoot: true } : buildDomDescriptor(semP, reg.root));
+          const cleanHtml = sanitizeElementTemplateHtml(target);
+          await adm?.recordDomDuplicate?.({
+            regionKey: reg.key,
+            targetSel,
+            parentSel,
+            kindLabel: elKind,
+            cleanHtml
+          }, () => route({ preserveScroll: true }));
+        }
+        return;
+      }
+
+      if (act === 'delete') {
+        if (target.dataset?.liveList && target.dataset?.liveItem) {
+          const fb = getFallbackDataForElement(target);
+          const tpl = await adm?.deleteListItem?.(target.dataset.liveList, target.dataset.liveItem, {
+            scope: getCurrentRouteScope(),
+            kindLabel: elKind,
+            previewText: target.dataset.livePreview || target.textContent?.trim()?.slice(0, 56),
+            fallbackData: fb
+          }, () => route({ preserveScroll: true }));
+          if (tpl) {
+            adm?.showActionToast?.(`تم حذف "${elKind}"`, `+ إضافة ${elKind} من نفس النوع`, () => {
+              adm.addElementFromDeletedType(tpl.id, () => route({ preserveScroll: true }));
+            });
+          }
+        } else {
+          const reg = resolveDomRegionForEl(target);
+          const targetSel = JSON.stringify(buildDomDescriptor(target, reg.root));
+          const semP = getSemanticParent(target);
+          const parentSel = JSON.stringify(semP === reg.root ? { isRoot: true } : buildDomDescriptor(semP, reg.root));
+          const cleanHtml = sanitizeElementTemplateHtml(target);
+          const tpl = await adm?.recordDomDelete?.({
+            regionKey: reg.key,
+            scope: getCurrentRouteScope(),
+            targetSel,
+            parentSel,
+            kindLabel: elKind,
+            tagName: target.tagName,
+            previewText: target.textContent?.replace(/\s+/g, ' ').trim().slice(0, 56),
+            cleanHtml
+          }, () => route({ preserveScroll: true }));
+          if (tpl) {
+            adm?.showActionToast?.(`تم حذف "${elKind}"`, `+ إضافة ${elKind} من نفس النوع`, () => {
+              adm.addElementFromDeletedType(tpl.id, () => route({ preserveScroll: true }));
+            });
+          }
+        }
+      }
+    });
+
+    return bar;
+  }
+
+  function showElementStudioFor(el, lockState = false) {
+    if (!el || !el.isConnected || el.matches(SHELL_PROTECTED_SEL)) return;
+    clearTimeout(studioHoverTimer);
+    if (studioTrackedEl && studioTrackedEl !== el) {
+      studioTrackedEl.classList?.remove('nt-el-hover-target', 'nt-el-locked-target');
+    }
+    studioTrackedEl = el;
+    studioLocked = Boolean(lockState);
+    el.classList?.add(studioLocked ? 'nt-el-locked-target' : 'nt-el-hover-target');
+    el.classList?.remove(studioLocked ? 'nt-el-hover-target' : 'nt-el-locked-target');
+
+    const bar = ensureElementStudioBar();
+    const kindLbl = $('#nt-el-kind-lbl', bar);
+    if (kindLbl) kindLbl.textContent = inferElementKindLabel(el);
+
+    const listBtn = $('#nt-el-list-btn', bar);
+    const listCard = el.closest('[data-live-item]');
+    if (listBtn) {
+      if (listCard && listCard !== el) {
+        listBtn.hidden = false;
+        listBtn.textContent = `⬆ ${listCard.dataset.liveKind || 'البطاقة'}`;
+      } else {
+        listBtn.hidden = true;
+      }
+    }
+
+    bar.hidden = false;
+    const r = el.getBoundingClientRect();
+    const barW = bar.offsetWidth || 260;
+    const barH = bar.offsetHeight || 34;
+    const topPos = r.top >= barH + 10 ? r.top - barH - 4 : Math.min(window.innerHeight - barH - 8, r.bottom + 4);
+    const leftPos = Math.max(8, Math.min(window.innerWidth - barW - 8, r.right - barW));
+    bar.style.top = `${Math.max(6, topPos)}px`;
+    bar.style.left = `${leftPos}px`;
+  }
+
+  function initElementStudioEvents() {
+    if (window._ntElStudioEventsBound) return;
+    window._ntElStudioEventsBound = true;
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isLiveEdit() || getCurrentRouteScope().startsWith('admin')) {
+        hideElementStudioBar();
+        return;
+      }
+      const adm = window.NileTrailsAdmin;
+      if (adm?.getPreviewDevice?.() !== 'desktop') return;
+      const subMode = adm?.getSubMode ? adm.getSubMode() : 'select';
+      if (subMode === 'browse' || studioLocked || document.activeElement?.isContentEditable) return;
+      if (e.target.closest?.('#nt-el-studio-bar')) {
+        clearTimeout(studioHoverTimer);
+        return;
+      }
+      const cand = resolveEditableElement(e.target);
+      if (cand) {
+        showElementStudioFor(cand, false);
+      } else {
+        studioHoverTimer = setTimeout(hideElementStudioBar, 220);
+      }
+    }, { passive: true });
+
+    document.addEventListener('click', (e) => {
+      if (!isLiveEdit() || getCurrentRouteScope().startsWith('admin')) return;
+      const adm = window.NileTrailsAdmin;
+      const subMode = adm?.getSubMode ? adm.getSubMode() : 'select';
+      if (subMode !== 'elements') return;
+      if (e.target.closest?.(LIVE_CHROME_SEL) || e.target.closest?.('dialog, .adm-shell, #cms-toast')) return;
+      if (!$('#app')?.contains(e.target)) return;
+      const cand = resolveEditableElement(e.target);
+      if (!cand) return;
+      e.preventDefault();
+      e.stopPropagation();
+      showElementStudioFor(cand, true);
+    }, true);
+
+    window.addEventListener('scroll', () => {
+      if (studioTrackedEl && !document.getElementById('nt-el-studio-bar')?.hidden) {
+        showElementStudioFor(studioTrackedEl, studioLocked);
+      }
+    }, { passive: true });
+  }
+
+  function route(opts = {}) {
+    const keepScroll = Boolean(opts && opts.preserveScroll);
+    const savedY = keepScroll ? window.scrollY : 0;
+    hideElementStudioBar();
     const st = CMS.getState();
     applyTheme(st);
     const raw = location.hash.replace(/^#\/?/, '').split('?')[0].replace(/^\/+|\/+$/g, '');
@@ -2136,8 +2950,11 @@
         </main>`;
     } else {
       $('#app').innerHTML = header() + `<main id="main">${body}${renderPageFaqSection(faqScope)}</main>` + footer();
+      applyDomEdits($('#app'));
+      applyAndDecorateUniversalText($('#app'));
     }
     bind();
+    if (keepScroll) window.scrollTo(0, savedY);
   }
 
   function bindProgramBookingForm() {
@@ -2566,21 +3383,72 @@
       btn.addEventListener('click', () => adm?.redo?.(() => route()));
     });
 
-    $$('[data-live-edit-sec]').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+    const bindLiveSecBtns = (scopeEl) => {
+      $$('[data-live-edit-sec]', scopeEl).forEach(btn => {
+        if (btn.dataset.ntSecBound === '1') return;
+        btn.dataset.ntSecBound = '1';
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const pop = btn.closest('[popover]');
+          if (pop?.hidePopover) try { pop.hidePopover(); } catch {}
+          const secKey = btn.dataset.liveEditSec;
+          adm?.openLiveEditor?.(secKey, () => {
+            if (secKey.startsWith('create:page')) {
+              const pages = CMS.getState().customPages || [];
+              const last = pages[pages.length - 1];
+              if (last?.slug) { location.hash = `#/page/${last.slug}`; return; }
+            }
+            route();
+          });
+        });
+      });
+
+      $$('[data-live-add-list]', scopeEl).forEach(btn => {
+        if (btn.dataset.ntAddBound === '1') return;
+        btn.dataset.ntAddBound = '1';
+        btn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const listPath = btn.dataset.liveAddList;
+          const kind = btn.dataset.liveKind || 'عنصر جديد';
+          const fbKey = btn.dataset.liveFallback || '';
+          const bp = btn.dataset.liveBasePrice || 750;
+          const fbData = (fbKey === 'DEFAULT_FACILITIES' || fbKey === 'signaturePoints' || fbKey === 'cabins')
+            ? getSampleForListPath(listPath, fbKey, bp)
+            : undefined;
+          const sampleItem = getSampleForListPath(listPath, fbKey, bp);
+          await adm?.addListItemOfType?.(listPath, null, { kindLabel: kind, fallbackData: fbData, sampleItem }, () => route({ preserveScroll: true }));
+        });
+      });
+    };
+    bindLiveSecBtns(document);
+
+    $$('[data-add-deleted-type]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
         const pop = btn.closest('[popover]');
         if (pop?.hidePopover) try { pop.hidePopover(); } catch {}
-        const secKey = btn.dataset.liveEditSec;
-        adm?.openLiveEditor?.(secKey, () => {
-          if (secKey.startsWith('create:page')) {
-            const pages = CMS.getState().customPages || [];
-            const last = pages[pages.length - 1];
-            if (last?.slug) { location.hash = `#/page/${last.slug}`; return; }
+        const typeId = btn.dataset.addDeletedType;
+        await adm?.addElementFromDeletedType?.(typeId, (tpl) => {
+          const cur = getCurrentRouteScope();
+          if (tpl?.scope && tpl.scope !== 'header' && tpl.scope !== 'footer' && tpl.scope !== 'all' && tpl.scope !== cur) {
+            location.hash = tpl.scope === 'home' ? '#/' : `#/${tpl.scope}`;
+            return;
           }
-          route();
+          route({ preserveScroll: true });
         });
+      });
+    });
+
+    $$('[data-clear-deleted-types]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const pop = btn.closest('[popover]');
+        if (pop?.hidePopover) try { pop.hidePopover(); } catch {}
+        await adm?.clearDeletedElementTypes?.(() => route({ preserveScroll: true }));
       });
     });
 
@@ -2665,55 +3533,17 @@
         });
       }
 
-      const subMode = adm?.getSubMode ? adm.getSubMode() : 'select';
-      const triggerEvt = subMode === 'select' ? 'click' : 'dblclick';
-      $$('#app [data-live-text]').forEach(el => {
-        el.addEventListener(triggerEvt, (e) => {
-          if (e.target.closest('button.nt-live-card-ctrl, button.nt-live-faq-edit')) return;
-          e.preventDefault();
-          e.stopPropagation();
-          if (el.isContentEditable) return;
-
-          const path = el.dataset.liveText;
-          const isHtml = el.dataset.liveHtml === '1';
-          const origContent = isHtml ? el.innerHTML : el.textContent;
-          el.contentEditable = 'true';
-          el.classList.add('nt-live-editing-now');
-          el.focus();
-
-          const finishEdit = async (commit) => {
-            el.removeEventListener('blur', onBlur);
-            el.removeEventListener('keydown', onKey);
-            el.contentEditable = 'false';
-            el.classList.remove('nt-live-editing-now');
-            if (!commit) {
-              if (isHtml) el.innerHTML = origContent;
-              else el.textContent = origContent;
-              return;
-            }
-            const nextVal = (isHtml ? el.innerHTML : el.textContent).trim();
-            if (nextVal !== String(origContent).trim() && nextVal.length > 0) {
-              await adm?.saveInlinePath?.(path, nextVal, () => route());
-            } else if (!nextVal.length) {
-              if (isHtml) el.innerHTML = origContent;
-              else el.textContent = origContent;
-            }
-          };
-
-          const onBlur = () => finishEdit(true);
-          const onKey = (ke) => {
-            if (ke.key === 'Escape') {
-              ke.preventDefault();
-              finishEdit(false);
-            } else if (ke.key === 'Enter' && !ke.shiftKey) {
-              ke.preventDefault();
-              el.blur();
-            }
-          };
-          el.addEventListener('blur', onBlur);
-          el.addEventListener('keydown', onKey);
-        });
-      });
+      enableInlineEditingIn($('#app'));
+      initElementStudioEvents();
+      const hdr = $('.site-header');
+      if (hdr) document.documentElement.style.setProperty('--nt-hdr-h', `${hdr.offsetHeight}px`);
+      if (!window._ntHdrResizeBound) {
+        window._ntHdrResizeBound = true;
+        window.addEventListener('resize', () => {
+          const h = $('.site-header')?.offsetHeight;
+          if (h) document.documentElement.style.setProperty('--nt-hdr-h', `${h}px`);
+        }, { passive: true });
+      }
 
       if (!window._ntLiveShortcutBound) {
         window._ntLiveShortcutBound = true;
@@ -2818,6 +3648,7 @@
     // Program tab switching inside Cruise / Dahabiya detail page
     $$('[data-prog-switch]').forEach(el => {
       el.addEventListener('click', (e) => {
+        if (e.target.closest('[contenteditable="true"]')) return;
         e.stopPropagation();
         const progSlug = el.getAttribute('data-prog-switch');
         const baseHash = location.hash.split('?')[0];
@@ -2862,8 +3693,14 @@
         xs = xs.filter(x => (!cat || x.tier.toLowerCase() === cat) && (!routeVal || x.route === routeVal) && (!night || String(x.nights) === night));
         if (sort === 'duration-asc') xs.sort((a, b) => a.nights - b.nights);
         if (sort === 'duration-desc') xs.sort((a, b) => b.nights - a.nights);
-        $('#results-grid').innerHTML = xs.length ? xs.map(x => miniCard(x, type)).join('') : '<div class="no-results">No exact matches. Try adjusting your filters, or ask us to find a tailored option.</div>';
+        const gridEl = $('#results-grid');
+        gridEl.innerHTML = xs.length ? xs.map(x => miniCard(x, type)).join('') : '<div class="no-results">No exact matches. Try adjusting your filters, or ask us to find a tailored option.</div>';
         $('#results-count').textContent = `${xs.length} experience${xs.length === 1 ? '' : 's'} to explore`;
+        applyAndDecorateUniversalText(gridEl);
+        if (isLiveEdit()) {
+          enableInlineEditingIn(gridEl);
+          bindLiveSecBtns(gridEl);
+        }
         syncSaves();
       }
       $$('.filters-fields select').forEach(x => x.addEventListener('change', update));
