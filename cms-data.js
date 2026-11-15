@@ -941,7 +941,10 @@ window.NileTrailsCMS = (() => {
       theme: {
         navy: '#0d2a3a',
         gold: '#c7a36a',
-        cream: '#fcfaf6'
+        cream: '#fcfaf6',
+        fontScale: 1,
+        radius: 2,
+        preset: 'royal-navy'
       }
     },
     homeConfig: {
@@ -1006,6 +1009,8 @@ window.NileTrailsCMS = (() => {
       storiesEyebrow: 'FROM THE JOURNAL',
       storiesTitle: 'Stories worth <em>taking with you.</em>',
       storiesSub: 'Guides, ideas and inspiration for seeing Egypt with fresh eyes.',
+      customPagesEyebrow: 'CURATED COLLECTIONS',
+      customPagesTitle: 'Special <em>Pages & Collections.</em>',
       closingEyebrow: 'MADE FOR YOUR MOMENTS',
       closingTitle: 'Where will your<br><em>story take you?</em>',
       closingBody: 'Tell us the places you dream about. We will help design the journey that feels right for you.',

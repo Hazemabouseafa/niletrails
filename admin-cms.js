@@ -20,8 +20,103 @@ window.NileTrailsAdmin = (() => {
   const PRESET_IMAGES = [
     ['Nile Sailing (Dahabiya)', 'assets/nile-sailing.webp'],
     ['Ancient Egyptian Temple', 'assets/egypt-temple.webp'],
-    ['Luxury Nile Cruise Ship', 'assets/nile-cruise.webp']
+    ['Luxury Nile Cruise Ship', 'assets/nile-cruise.webp'],
+    ['Karnak Temple Complex', 'assets/sight-karnak.jpg'],
+    ['Temple of Hatshepsut', 'assets/sight-hatshepsut.jpg'],
+    ['Valley of the Queens', 'assets/sight-queens.jpg']
   ];
+
+  const MAX_HISTORY = 25;
+  let undoStack = [];
+  let redoStack = [];
+  const captureSnapshot = () => JSON.stringify(CMS.getState());
+  const pushUndoSnapshot = (snap) => {
+    if (!snap) return;
+    undoStack.push(snap);
+    if (undoStack.length > MAX_HISTORY) undoStack.shift();
+    redoStack = [];
+  };
+  const canUndo = () => undoStack.length > 0;
+  const canRedo = () => redoStack.length > 0;
+
+  async function undo(onDone) {
+    if (!undoStack.length) {
+      showToast('لا توجد خطوات للتراجع', 'error');
+      return false;
+    }
+    redoStack.push(captureSnapshot());
+    const prev = undoStack.pop();
+    await CMS.setState(JSON.parse(prev));
+    showToast('↩ تم التراجع عن آخر تعديل');
+    if (typeof onDone === 'function') onDone();
+    return true;
+  }
+
+  async function redo(onDone) {
+    if (!redoStack.length) {
+      showToast('لا توجد خطوات للإعادة', 'error');
+      return false;
+    }
+    undoStack.push(captureSnapshot());
+    const next = redoStack.pop();
+    await CMS.setState(JSON.parse(next));
+    showToast('↪ تم إعادة التعديل');
+    if (typeof onDone === 'function') onDone();
+    return true;
+  }
+
+  const LUXURY_THEME_PRESETS = {
+    'royal-navy': { label: 'Royal Nile Navy', navy: '#0d2a3a', gold: '#c7a36a', cream: '#fcfaf6', fontScale: 1, radius: 2 },
+    'desert-sand': { label: 'Desert Terracotta', navy: '#2c221e', gold: '#c48f56', cream: '#faf5ed', fontScale: 1, radius: 4 },
+    'emerald-nile': { label: 'Emerald Sanctuary', navy: '#0d332d', gold: '#c8a45d', cream: '#f6faf7', fontScale: 1.02, radius: 6 },
+    'obsidian-gold': { label: 'Obsidian Night', navy: '#141923', gold: '#d4af6a', cream: '#f8f7f4', fontScale: 1, radius: 2 }
+  };
+
+  function resolvePathContainer(root, rawPath) {
+    const parts = [];
+    const re = /([^.[\]]+)|\[([^\]]+)\]/g;
+    let m;
+    while ((m = re.exec(rawPath)) !== null) {
+      parts.push(m[1] !== undefined ? m[1] : { filter: m[2] });
+    }
+    let cur = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (cur == null) return null;
+      const seg = parts[i];
+      if (typeof seg === 'string') {
+        cur = cur[seg];
+      } else if (Array.isArray(cur)) {
+        const [fk, fv] = seg.filter.split('=');
+        cur = cur.find(item => item && String(item[fk]) === String(fv));
+      } else {
+        return null;
+      }
+    }
+    return cur ? { container: cur, key: parts[parts.length - 1] } : null;
+  }
+
+  function getPathValue(root, rawPath) {
+    const res = resolvePathContainer(root, rawPath);
+    if (!res || typeof res.key !== 'string') return undefined;
+    return res.container[res.key];
+  }
+
+  function setPathValue(root, rawPath, value) {
+    const res = resolvePathContainer(root, rawPath);
+    if (!res || typeof res.key !== 'string') return false;
+    res.container[res.key] = value;
+    return true;
+  }
+
+  async function saveInlinePath(rawPath, newValue, onDone) {
+    const st = CMS.getState();
+    const curVal = getPathValue(st, rawPath);
+    if (String(curVal ?? '') === String(newValue ?? '')) return false;
+    const beforeSnap = captureSnapshot();
+    if (!setPathValue(st, rawPath, newValue)) return false;
+    await finishSave(typeof onDone === 'function' ? onDone : () => {}, 'تم حفظ النص مباشرة ✓', beforeSnap);
+    return true;
+  }
 
   const PRESET_VIDEOS = [
     ['فيديو 1 — النيل الرئيسي (Hero Main MP4)', 'assets/videos/hero-main.mp4'],
@@ -64,7 +159,10 @@ window.NileTrailsAdmin = (() => {
     toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
   }
 
-  async function saveAndRefresh(containerSelector, msg = 'تم الحفظ والمزامنة مع الموقع') {
+  async function finishSave(target, msg = 'تم الحفظ والمزامنة مع الموقع', beforeSnap = null) {
+    if (beforeSnap && beforeSnap !== captureSnapshot()) {
+      pushUndoSnapshot(beforeSnap);
+    }
     await CMS.save();
     lastSavedTime = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
     showToast(msg);
@@ -73,7 +171,15 @@ window.NileTrailsAdmin = (() => {
       pill.textContent = `متزامن ✓ (${lastSavedTime})`;
       pill.classList.add('synced');
     }
-    renderAdmin(containerSelector, { preserveScroll: true });
+    if (typeof target === 'function') {
+      target();
+    } else if (target) {
+      renderAdmin(target, { preserveScroll: true });
+    }
+  }
+
+  async function saveAndRefresh(containerSelector, msg = 'تم الحفظ والمزامنة مع الموقع', beforeSnap = null) {
+    return finishSave(containerSelector, msg, beforeSnap);
   }
 
   async function uploadMediaFile(file) {
@@ -500,6 +606,7 @@ window.NileTrailsAdmin = (() => {
     const v = allVessels.find(x => x.id === vesselId);
     const pr = v?.programs?.find(p => p.id === programId);
     if (!v || !pr) return;
+    const beforeSnap = captureSnapshot();
 
     const allFacilities = CMS.DEFAULT_FACILITIES || [];
     const curFacilities = Array.isArray(pr.facilities) && pr.facilities.length ? pr.facilities : allFacilities;
@@ -801,7 +908,7 @@ window.NileTrailsAdmin = (() => {
           pr.excluded = String(fd.get('excludedText') || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
 
           dialogEl.close();
-          await saveAndRefresh(containerSelector, `تم تحديث برنامج "${pr.title}" بنجاح`);
+          await saveAndRefresh(containerSelector, `تم تحديث برنامج "${pr.title}" بنجاح`, beforeSnap);
         });
       }
     });
@@ -876,6 +983,7 @@ window.NileTrailsAdmin = (() => {
   function openSightDrawer(st, idx, containerSelector) {
     const pl = st.sightseeingPlaces?.[idx];
     if (!pl) return;
+    const beforeSnap = captureSnapshot();
     openSlideDrawer({
       title: `تعديل مزار: ${pl.title}`,
       subtitle: `الموقع: ${pl.location}`,
@@ -919,7 +1027,7 @@ window.NileTrailsAdmin = (() => {
             enabled: fd.get('enabled') === 'on'
           };
           dlg.close();
-          await saveAndRefresh(containerSelector, `تم تحديث "${st.sightseeingPlaces[idx].title}"`);
+          await saveAndRefresh(containerSelector, `تم تحديث "${st.sightseeingPlaces[idx].title}"`, beforeSnap);
         });
       }
     });
@@ -991,6 +1099,7 @@ window.NileTrailsAdmin = (() => {
   function openAddonDrawer(st, idx, containerSelector) {
     const ad = st.addons?.[idx];
     if (!ad) return;
+    const beforeSnap = captureSnapshot();
     openSlideDrawer({
       title: `تعديل إضافة: ${ad.title}`,
       subtitle: ad.category || 'Program Extension',
@@ -1046,7 +1155,7 @@ window.NileTrailsAdmin = (() => {
             showOnHome: fd.get('showOnHome') === 'on'
           };
           dlg.close();
-          await saveAndRefresh(containerSelector, `تم تحديث "${st.addons[idx].title}"`);
+          await saveAndRefresh(containerSelector, `تم تحديث "${st.addons[idx].title}"`, beforeSnap);
         });
       }
     });
@@ -1114,10 +1223,11 @@ window.NileTrailsAdmin = (() => {
     `;
   }
 
-  function openFaqDrawer(st, idx, containerSelector) {
+  function openFaqDrawer(st, idx, containerSelector, defaultScope = 'all') {
     const isNew = idx === null || idx === undefined;
+    const beforeSnap = captureSnapshot();
     const item = isNew
-      ? { id: 'faq-' + Date.now(), scope: 'all', question: '', answer: '', enabled: true }
+      ? { id: 'faq-' + Date.now(), scope: defaultScope || 'all', question: '', answer: '', enabled: true }
       : st.faqs[idx];
     if (!item) return;
 
@@ -1165,7 +1275,7 @@ window.NileTrailsAdmin = (() => {
           if (isNew) st.faqs.unshift(updated);
           else st.faqs[idx] = updated;
           dlg.close();
-          await saveAndRefresh(containerSelector, isNew ? 'تم إضافة السؤال بنجاح' : 'تم حفظ تعديل السؤال');
+          await saveAndRefresh(containerSelector, isNew ? 'تم إضافة السؤال بنجاح' : 'تم حفظ تعديل السؤال', beforeSnap);
         });
       }
     });
@@ -1293,6 +1403,8 @@ window.NileTrailsAdmin = (() => {
   }
 
   const EDIT_MODE_KEY = 'nt_live_edit_mode';
+  const EDIT_SUBMODE_KEY = 'nt_live_submode';
+  const PREVIEW_DEVICE_KEY = 'nt_live_preview_device';
   const STATIC_PAGE_LABELS = {
     'our-story': 'قصتنا (Our Story)',
     'why-niletrails': 'لماذا NileTrails',
@@ -1310,6 +1422,349 @@ window.NileTrailsAdmin = (() => {
 
   function setEditMode(enabled) {
     try { sessionStorage.setItem(EDIT_MODE_KEY, enabled ? '1' : '0'); } catch {}
+  }
+
+  function getSubMode() {
+    try { return sessionStorage.getItem(EDIT_SUBMODE_KEY) === 'browse' ? 'browse' : 'select'; } catch { return 'select'; }
+  }
+
+  function setSubMode(mode) {
+    try { sessionStorage.setItem(EDIT_SUBMODE_KEY, mode === 'browse' ? 'browse' : 'select'); } catch {}
+  }
+
+  function getPreviewDevice() {
+    try {
+      const v = sessionStorage.getItem(PREVIEW_DEVICE_KEY);
+      return v === 'mobile' || v === 'tablet' ? v : 'desktop';
+    } catch { return 'desktop'; }
+  }
+
+  function setPreviewDevice(dev) {
+    try { sessionStorage.setItem(PREVIEW_DEVICE_KEY, dev === 'mobile' || dev === 'tablet' ? dev : 'desktop'); } catch {}
+  }
+
+  function buildDefaultProgram(target, overrides = {}) {
+    const isDah = target?.kind === 'dahabiya';
+    const pid = (target?.id || 'vessel') + '-prog-' + Date.now();
+    return {
+      id: pid,
+      slug: 'custom-program-' + Math.floor(100 + Math.random() * 900),
+      tabLabel: '4 Nights',
+      tabSub: 'Luxor → Aswan',
+      title: '5 Days / 4 Nights — Luxor to Aswan Program',
+      nights: 4,
+      duration: '5 Days / 4 Nights',
+      route: 'Luxor → Esna → Edfu → Kom Ombo → Aswan',
+      basePrice: Number(target?.basePrice) || 890,
+      canBeAddonForOthers: true,
+      heroVideo: target?.heroVideo || (isDah ? 'assets/videos/hero-dahabiya-1.mp4' : 'assets/videos/hero-cruise-1.mp4'),
+      summary: 'Full-board sailing program with private Egyptologist tour guide.',
+      facilities: [...(CMS.DEFAULT_FACILITIES || [])],
+      allowedAddonIds: ['ALL'],
+      pricingSeasons: { summer: { triple: 850, double: 890, single: 1470 }, winter: { triple: 1020, double: 1050, single: 1690 } },
+      itinerary: [
+        { day: 'Day 1', stop: 'Luxor', title: 'Embarkation & Karnak Temple', desc: 'Check-in & East Bank guided tour.', meals: 'Lunch & Dinner' },
+        { day: 'Day 2', stop: 'West Bank', title: 'Valley of the Kings & Sail to Edfu', desc: 'Royal tombs & Hatshepsut Temple.', meals: 'Breakfast, Lunch & Dinner' },
+        { day: 'Day 3', stop: 'Kom Ombo', title: 'Edfu & Kom Ombo Temples', desc: 'Sail south toward Aswan.', meals: 'Breakfast, Lunch & Dinner' },
+        { day: 'Day 4', stop: 'Aswan', title: 'Philae Temple & Disembarkation', desc: 'Island temple visit & farewell.', meals: 'Breakfast' }
+      ],
+      cabins: [
+        { id: 'triple-cabin', name: 'Triple Cabin', priceDelta: -40, desc: '3 persons sharing' },
+        { id: 'double-cabin', name: 'Double Cabin', priceDelta: 0, desc: '2 persons sharing' },
+        { id: 'single-cabin', name: 'Single Cabin', priceDelta: 580, desc: 'Private sole use' }
+      ],
+      included: ['Full-board onboard', 'Licensed Egyptologist guide'],
+      excluded: ['International flights', 'Optional sightseeing tours'],
+      ...overrides
+    };
+  }
+
+  function buildDefaultVessel(isDahabiya) {
+    const id = (isDahabiya ? 'dahabiya-' : 'cruise-') + Date.now();
+    const vessel = {
+      id,
+      slug: (isDahabiya ? 'new-dahabiya-' : 'new-cruise-') + Math.floor(100 + Math.random() * 900),
+      title: isDahabiya ? 'New Boutique Dahabiya' : 'New 5-Star Nile Cruise',
+      tier: 'Luxury',
+      nights: 4,
+      basePrice: 890,
+      route: 'Luxor – Aswan',
+      image: isDahabiya ? 'assets/nile-sailing.webp' : 'assets/nile-cruise.webp',
+      heroVideo: isDahabiya ? 'assets/videos/hero-dahabiya-1.mp4' : 'assets/videos/hero-cruise-1.mp4',
+      kind: isDahabiya ? 'dahabiya' : 'cruise',
+      sub: 'Newly added Nile vessel ready for customization.',
+      facilities: [...(CMS.DEFAULT_FACILITIES || [])],
+      enabled: true,
+      showOnHome: true,
+      programs: []
+    };
+    vessel.programs.push(buildDefaultProgram(vessel));
+    return vessel;
+  }
+
+  function buildDefaultSightseeing() {
+    return {
+      id: 'sight-' + Date.now(),
+      slug: 'custom-sightseeing-' + Math.floor(100 + Math.random() * 900),
+      location: 'Aswan Nuba',
+      title: 'New Guided Sightseeing Excursion',
+      highlights: 'Guided visit with licensed private Egyptologist, entry tickets and private transfers.',
+      shortDesc: 'Guided visit with licensed private Egyptologist, entry tickets and private transfers.',
+      fullOverview: 'Experience this historic Nile monument with your personal licensed Egyptologist guide.',
+      duration: '3 Hours',
+      price: 55,
+      priceUnit: 'per person',
+      image: 'assets/egypt-temple.webp',
+      enabled: true,
+      canAddToJourney: true
+    };
+  }
+
+  function buildDefaultAddon() {
+    return {
+      id: 'addon-' + Date.now(),
+      title: 'New Program Extension / Add-on',
+      type: 'program-extension',
+      category: 'Other Program Extension',
+      duration: '+2 Days / 1 Night',
+      price: 290,
+      priceUnit: 'per person',
+      summary: 'Extend your Nile cruise seamlessly.',
+      image: 'assets/egypt-temple.webp',
+      enabled: true,
+      showOnHome: false
+    };
+  }
+
+  function buildDefaultCustomPage() {
+    return {
+      id: 'page-' + Date.now(),
+      slug: 'custom-experience-' + Math.floor(100 + Math.random() * 900),
+      title: 'New Custom Egypt Experience',
+      heroEyebrow: 'TAILOR-MADE COLLECTION',
+      heroSub: 'Describe your new destination, package, or special seasonal offer here.',
+      heroImage: 'assets/egypt-temple.webp',
+      enabled: true,
+      showOnHome: true,
+      showInNavbar: true,
+      navParent: 'beyond-the-nile',
+      blocks: [{
+        type: 'text-image',
+        eyebrow: 'FEATURED EXPERIENCE',
+        heading: 'Crafted around your curiosity.',
+        body: 'Add custom paragraphs, photos, and call-to-action buttons from the page builder.',
+        image: 'assets/nile-sailing.webp'
+      }]
+    };
+  }
+
+  function openVesselDrawer(st, vesselId, targetOrCb) {
+    const v = [...(st.cruises || []), ...(st.dahabiyas || [])].find(x => x.id === vesselId);
+    if (!v) return;
+    const beforeSnap = captureSnapshot();
+    const cur = st.settings?.currencySymbol || '$';
+
+    openSlideDrawer({
+      title: `تعديل ${v.kind === 'dahabiya' ? 'الذهبية' : 'الكروز'}: ${v.title}`,
+      subtitle: `#/${v.kind === 'dahabiya' ? 'dahabiyas' : 'nile-cruises'}/${v.slug}`,
+      bodyHtml: `
+        <form id="adm-vessel-drawer-form" class="adm-drawer-form">
+          <div class="adm-form-grid">
+            <label>اسم المركب / الذهبية * <input type="text" name="title" value="${esc(v.title)}" required autofocus></label>
+            <label>الفئة (Tier)
+              <select name="tier">
+                <option value="Luxury" ${v.tier === 'Luxury' ? 'selected' : ''}>Luxury / فاخرة</option>
+                <option value="Deluxe" ${v.tier === 'Deluxe' ? 'selected' : ''}>Deluxe / ديلوكس</option>
+                <option value="Superior" ${v.tier === 'Superior' ? 'selected' : ''}>Superior / متميزة</option>
+                <option value="Private" ${v.tier === 'Private' ? 'selected' : ''}>Private / خاصة</option>
+              </select>
+            </label>
+            <label>خط الإبحار الرئيسي <input type="text" name="route" value="${esc(v.route)}"></label>
+            <label>عدد الليالي المعروض <input type="number" name="nights" value="${v.nights || 4}" min="1"></label>
+            <div class="full-col adm-standalone-price-box">
+              <div class="adm-spb-head">
+                <label style="flex:1;min-width:200px">
+                  سعر ${v.kind === 'dahabiya' ? 'الذهبية' : 'الكروز'} الأساسي بدون أي إضافات (${cur}) *
+                  <input type="number" name="basePrice" value="${Number(v.basePrice) || Number(v.programs?.[0]?.basePrice) || 890}" min="0" step="1" required>
+                </label>
+                <label class="adm-switch" style="align-self:flex-end;padding-bottom:6px">
+                  <input type="checkbox" name="syncPrimaryProgram" checked>
+                  <span>تحديث سعر البرنامج الأساسي الأول تلقائياً</span>
+                </label>
+              </div>
+            </div>
+            <div class="full-col">${mediaFieldHtml('image', 'صورة المركب / الذهبية', v.image || 'assets/nile-cruise.webp', false)}</div>
+            <div class="full-col">${mediaFieldHtml('heroVideo', 'فيديو البداية الصامت (Hero Autoplay)', v.heroVideo || '', true)}</div>
+            <label class="full-col">الوصف المختصر <textarea name="sub" rows="3">${esc(v.sub || '')}</textarea></label>
+          </div>
+          <div class="adm-toggles-row" style="margin-top:12px">
+            <label class="adm-switch"><input type="checkbox" name="enabled" ${v.enabled !== false ? 'checked' : ''}><span>مفعّل على الموقع</span></label>
+            <label class="adm-switch"><input type="checkbox" name="showOnHome" ${v.showOnHome ? 'checked' : ''}><span>إظهار بالرئيسية</span></label>
+          </div>
+          ${(v.programs || []).length ? `
+            <hr class="adm-sep">
+            <h4 style="margin:0 0 8px">تحرير سريع لأي برنامج داخل "${esc(v.title)}"</h4>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              ${(v.programs || []).map(pr => `
+                <button type="button" class="adm-btn-outline-sm" data-jump-prog="${esc(pr.id)}">✏ ${esc(pr.tabLabel || pr.duration)} (${cur}${Number(pr.basePrice) || 890})</button>
+              `).join('')}
+            </div>
+          ` : ''}
+        </form>
+      `,
+      footerHtml: `<button type="button" class="adm-btn-outline" id="btn-drawer-cancel">إلغاء</button><button type="submit" form="adm-vessel-drawer-form" class="adm-btn-gold">حفظ وتحديث فوراً ✓</button>`,
+      onOpen: (dlg) => {
+        $('#btn-drawer-cancel', dlg)?.addEventListener('click', () => dlg.close());
+        $$('[data-jump-prog]', dlg).forEach(btn => {
+          btn.addEventListener('click', () => {
+            const pid = btn.dataset.jumpProg;
+            dlg.close();
+            openProgramDrawer(st, vesselId, pid, targetOrCb);
+          });
+        });
+        $('#adm-vessel-drawer-form', dlg)?.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          v.title = fd.get('title');
+          v.tier = fd.get('tier');
+          v.route = fd.get('route');
+          v.nights = Number(fd.get('nights')) || 4;
+          const cleanBase = Number(fd.get('basePrice')) || 0;
+          if (cleanBase > 0) v.basePrice = cleanBase;
+          if (fd.get('syncPrimaryProgram') === 'on' && v.programs?.[0] && cleanBase > 0) {
+            v.programs[0].basePrice = cleanBase;
+            if (!v.programs[0].pricingSeasons) v.programs[0].pricingSeasons = {};
+            if (!v.programs[0].pricingSeasons.summer) v.programs[0].pricingSeasons.summer = {};
+            v.programs[0].pricingSeasons.summer.double = cleanBase;
+          }
+          v.image = fd.get('image');
+          v.heroVideo = fd.get('heroVideo');
+          v.sub = fd.get('sub');
+          v.enabled = fd.get('enabled') === 'on';
+          v.showOnHome = fd.get('showOnHome') === 'on';
+          dlg.close();
+          await finishSave(targetOrCb, `تم تحديث "${v.title}" بنجاح`, beforeSnap);
+        });
+      }
+    });
+  }
+
+  function openCustomPageDrawer(st, pageId, targetOrCb) {
+    const pg = (st.customPages || []).find(p => p.id === pageId);
+    if (!pg) return;
+    const beforeSnap = captureSnapshot();
+    let draftBlocks = JSON.parse(JSON.stringify(pg.blocks || []));
+
+    const renderBlocks = (wrap) => {
+      wrap.innerHTML = draftBlocks.map((blk, i) => `
+        <div class="adm-repeater-card" data-blk-idx="${i}">
+          <div class="adm-repeater-head">
+            <strong>بلوك #${i + 1} (${esc(blk.type || 'text-image')})</strong>
+            <button type="button" class="adm-btn-danger-sm" data-del-blk="${i}">حذف</button>
+          </div>
+          <div class="adm-form-grid">
+            <label class="full-col">العنوان <input type="text" data-blk-f="heading" value="${esc(blk.heading || '')}"></label>
+            <label class="full-col">المحتوى <textarea rows="2" data-blk-f="body">${esc(blk.body || '')}</textarea></label>
+            ${blk.type === 'text-image' ? `<div class="full-col">${mediaFieldHtml('blk_img_' + i, 'صورة البلوك', blk.image || '', false)}</div>` : ''}
+            ${blk.type === 'cta-banner' ? `
+              <label>نص الزر <input type="text" data-blk-f="btnText" value="${esc(blk.btnText || '')}"></label>
+              <label>رابط الزر <input type="text" data-blk-f="btnUrl" value="${esc(blk.btnUrl || '')}" dir="ltr"></label>
+            ` : ''}
+          </div>
+        </div>
+      `).join('') || '<div class="adm-empty">لا توجد بلوكات بعد.</div>';
+      bindMediaUploadFields(wrap);
+    };
+
+    openSlideDrawer({
+      title: `تحرير صفحة: ${pg.title}`,
+      subtitle: `/#/page/${pg.slug}`,
+      bodyHtml: `
+        <form id="adm-live-page-form" class="adm-drawer-form">
+          <div class="adm-form-grid">
+            <label>عنوان الصفحة * <input type="text" name="title" value="${esc(pg.title)}" required autofocus></label>
+            <label>الوسم العلوي (Eyebrow) <input type="text" name="heroEyebrow" value="${esc(pg.heroEyebrow || pg.eyebrow || '')}"></label>
+            <div class="full-col">${mediaFieldHtml('heroImage', 'صورة الخلفية', pg.heroImage || 'assets/egypt-temple.webp', false)}</div>
+            <label class="full-col">الوصف الرئيسي <textarea name="heroSub" rows="2">${esc(pg.heroSub || pg.subtitle || '')}</textarea></label>
+          </div>
+          <div class="adm-toggles-row" style="margin-top:10px">
+            <label class="adm-switch"><input type="checkbox" name="enabled" ${pg.enabled !== false ? 'checked' : ''}><span>منشورة</span></label>
+            <label class="adm-switch"><input type="checkbox" name="showInNavbar" ${pg.showInNavbar ? 'checked' : ''}><span>بالقائمة العلوية</span></label>
+            <label class="adm-switch"><input type="checkbox" name="showOnHome" ${pg.showOnHome ? 'checked' : ''}><span>بالرئيسية</span></label>
+            <label class="adm-switch"><input type="checkbox" name="showInFooter" ${pg.showInFooter ? 'checked' : ''}><span>بالفوتر</span></label>
+          </div>
+          <hr class="adm-sep">
+          <div class="adm-drawer-sec-head">
+            <h4>بلوكات المحتوى (${draftBlocks.length})</h4>
+            <div style="display:flex;gap:6px">
+              <button type="button" class="adm-btn-outline-sm" data-add-live-blk="text-image">+ نص وصورة</button>
+              <button type="button" class="adm-btn-outline-sm" data-add-live-blk="cta-banner">+ بانر CTA</button>
+            </div>
+          </div>
+          <div id="live-page-blocks" style="display:grid;gap:10px"></div>
+        </form>
+      `,
+      footerHtml: `<button type="button" class="adm-btn-outline" id="btn-drawer-cancel">إلغاء</button><button type="submit" form="adm-live-page-form" class="adm-btn-gold">حفظ الصفحة ✓</button>`,
+      onOpen: (dlg) => {
+        const blkWrap = $('#live-page-blocks', dlg);
+        renderBlocks(blkWrap);
+
+        const syncBlocksFromDom = () => {
+          $$('.adm-repeater-card', blkWrap).forEach((card, i) => {
+            if (!draftBlocks[i]) return;
+            const h = card.querySelector('[data-blk-f="heading"]');
+            const b = card.querySelector('[data-blk-f="body"]');
+            const im = card.querySelector(`[name="blk_img_${i}"]`);
+            const bt = card.querySelector('[data-blk-f="btnText"]');
+            const bu = card.querySelector('[data-blk-f="btnUrl"]');
+            if (h) draftBlocks[i].heading = h.value;
+            if (b) draftBlocks[i].body = b.value;
+            if (im) draftBlocks[i].image = im.value;
+            if (bt) draftBlocks[i].btnText = bt.value;
+            if (bu) draftBlocks[i].btnUrl = bu.value;
+          });
+        };
+
+        $$('[data-add-live-blk]', dlg).forEach(btn => {
+          btn.addEventListener('click', () => {
+            syncBlocksFromDom();
+            const type = btn.dataset.addLiveBlk;
+            draftBlocks.push(type === 'cta-banner'
+              ? { type: 'cta-banner', heading: 'Ready to Sail With Us?', body: 'Customise this journey with our Nile Specialists.', btnText: 'Plan Your Journey', btnUrl: 'plan-your-journey' }
+              : { type: 'text-image', eyebrow: 'DISCOVERY', heading: 'Thoughtful Details', body: 'Describe this highlight or itinerary extension here.', image: 'assets/nile-sailing.webp' });
+            renderBlocks(blkWrap);
+          });
+        });
+
+        blkWrap.addEventListener('click', (e) => {
+          const del = e.target.closest('[data-del-blk]');
+          if (!del) return;
+          syncBlocksFromDom();
+          draftBlocks.splice(Number(del.dataset.delBlk), 1);
+          renderBlocks(blkWrap);
+        });
+
+        $('#btn-drawer-cancel', dlg)?.addEventListener('click', () => dlg.close());
+        $('#adm-live-page-form', dlg)?.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          syncBlocksFromDom();
+          const fd = new FormData(e.target);
+          pg.title = fd.get('title');
+          pg.heroEyebrow = fd.get('heroEyebrow');
+          pg.eyebrow = pg.heroEyebrow;
+          pg.heroImage = fd.get('heroImage');
+          pg.heroSub = fd.get('heroSub');
+          pg.subtitle = pg.heroSub;
+          pg.enabled = fd.get('enabled') === 'on';
+          pg.showInNavbar = fd.get('showInNavbar') === 'on';
+          pg.showOnHome = fd.get('showOnHome') === 'on';
+          pg.showInFooter = fd.get('showInFooter') === 'on';
+          pg.blocks = draftBlocks;
+          dlg.close();
+          await finishSave(targetOrCb, `تم حفظ صفحة "${pg.title}"`, beforeSnap);
+        });
+      }
+    });
   }
 
   const HOME_SECTION_EDITORS = {
@@ -1418,6 +1873,13 @@ window.NileTrailsAdmin = (() => {
         { key: 'closingBtnText', label: 'نص الزر', type: 'text' },
         { key: 'closingBtnUrl', label: 'رابط الزر', type: 'text', dir: 'ltr' }
       ]
+    },
+    customPagesHome: {
+      title: 'تحرير عنوان قسم الصفحات المضافة للرئيسية',
+      fields: [
+        { key: 'customPagesEyebrow', label: 'العنوان الصغير', type: 'text', full: true },
+        { key: 'customPagesTitle', label: 'العنوان الرئيسي (يدعم <em>)', type: 'text', full: true }
+      ]
     }
   };
 
@@ -1436,18 +1898,91 @@ window.NileTrailsAdmin = (() => {
     return `<label ${cls}>${esc(f.label)}<input type="text" name="${esc(f.key)}" value="${esc(val || '')}" ${dirAttr}></label>`;
   }
 
-  function openLiveSectionEditor(targetId, onSaved = null) {
+  async function openLiveSectionEditor(targetId, onSaved = null) {
     const st = CMS.getState();
     const hc = st.homeConfig || {};
     const s = st.settings || {};
+    const beforeSnap = captureSnapshot();
+    const targetCb = typeof onSaved === 'function' ? onSaved : '#app';
 
     const commitAndFinish = async (msg) => {
-      await CMS.save();
-      lastSavedTime = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-      showToast(msg);
-      if (typeof onSaved === 'function') onSaved();
-      else renderAdmin('#app', { preserveScroll: true });
+      await finishSave(targetCb, msg, beforeSnap);
     };
+
+    // Everywhere Entity & Quick-Create Routing
+    if (targetId.startsWith('vessel:')) {
+      return openVesselDrawer(st, targetId.slice(7), targetCb);
+    }
+    if (targetId.startsWith('program:')) {
+      const [, vid, pid] = targetId.split(':');
+      return openProgramDrawer(st, vid, pid, targetCb);
+    }
+    if (targetId.startsWith('sight:')) {
+      const key = targetId.slice(6);
+      const idx = (st.sightseeingPlaces || []).findIndex(x => x.id === key || x.slug === key);
+      if (idx >= 0) return openSightDrawer(st, idx, targetCb);
+    }
+    if (targetId.startsWith('addon:')) {
+      const key = targetId.slice(6);
+      const idx = (st.addons || []).findIndex(x => x.id === key);
+      if (idx >= 0) return openAddonDrawer(st, idx, targetCb);
+    }
+    if (targetId.startsWith('faq:')) {
+      const [, idOrNew, scope = 'all'] = targetId.split(':');
+      if (idOrNew === 'new') return openFaqDrawer(st, null, targetCb, scope);
+      const idx = (st.faqs || []).findIndex(x => x.id === idOrNew);
+      return openFaqDrawer(st, idx >= 0 ? idx : null, targetCb, scope);
+    }
+    if (targetId.startsWith('collection:')) {
+      const [, collKey, idOrSlug] = targetId.split(':');
+      const idx = (st[collKey] || []).findIndex(x => x.id === idOrSlug || x.slug === idOrSlug);
+      if (idx >= 0) return openCollectionDrawer(st, collKey, idx, targetCb);
+    }
+    if (targetId.startsWith('page:')) {
+      return openCustomPageDrawer(st, targetId.slice(5), targetCb);
+    }
+    if (targetId.startsWith('create:')) {
+      const [, kind, arg = ''] = targetId.split(':');
+      if (kind === 'cruise' || kind === 'dahabiya') {
+        const obj = buildDefaultVessel(kind === 'dahabiya');
+        const list = kind === 'dahabiya' ? (st.dahabiyas = st.dahabiyas || []) : (st.cruises = st.cruises || []);
+        list.unshift(obj);
+        await commitAndFinish(`تم إضافة "${obj.title}"`);
+        return openVesselDrawer(st, obj.id, targetCb);
+      }
+      if (kind === 'program' && arg) {
+        const vessel = [...(st.cruises || []), ...(st.dahabiyas || [])].find(x => x.id === arg);
+        if (vessel) {
+          const np = buildDefaultProgram(vessel);
+          vessel.programs = vessel.programs || [];
+          vessel.programs.push(np);
+          await commitAndFinish('تم إضافة البرنامج الجديد');
+          return openProgramDrawer(st, vessel.id, np.id, targetCb);
+        }
+      }
+      if (kind === 'sight') {
+        st.sightseeingPlaces = st.sightseeingPlaces || [];
+        st.sightseeingPlaces.unshift(buildDefaultSightseeing());
+        await commitAndFinish('تم إضافة مزار جديد');
+        return openSightDrawer(st, 0, targetCb);
+      }
+      if (kind === 'addon') {
+        st.addons = st.addons || [];
+        st.addons.unshift(buildDefaultAddon());
+        await commitAndFinish('تم إضافة Add-on جديد');
+        return openAddonDrawer(st, 0, targetCb);
+      }
+      if (kind === 'faq') {
+        return openFaqDrawer(st, null, targetCb, arg || 'all');
+      }
+      if (kind === 'page') {
+        st.customPages = st.customPages || [];
+        const pg = buildDefaultCustomPage();
+        st.customPages.push(pg);
+        await commitAndFinish('تم إنشاء صفحة مخصصة جديدة');
+        return openCustomPageDrawer(st, pg.id, targetCb);
+      }
+    }
 
     // Static core pages editor
     if (targetId.startsWith('static:')) {
@@ -1671,37 +2206,115 @@ window.NileTrailsAdmin = (() => {
       return;
     }
 
-    // Theme Colors Editor
+    // Design System Studio (Colors, Presets, Font Scale, Radius with instant live preview)
     if (targetId === 'theme') {
-      const th = s.theme || { navy: '#0d2a3a', gold: '#c7a36a', cream: '#fcfaf6' };
+      const th = { navy: '#0d2a3a', gold: '#c7a36a', cream: '#fcfaf6', fontScale: 1, radius: 2, preset: 'royal-navy', ...(s.theme || {}) };
+      const applyPreviewCss = (next) => {
+        const root = document.documentElement;
+        if (next.navy) { root.style.setProperty('--navy', next.navy); root.style.setProperty('--deep', next.navy); }
+        if (next.gold) root.style.setProperty('--gold', next.gold);
+        if (next.cream) root.style.setProperty('--cream', next.cream);
+        root.style.setProperty('--font-scale', String(next.fontScale || 1));
+        root.style.setProperty('--radius-base', `${Number(next.radius ?? 2)}px`);
+      };
+      let committed = false;
+
       openSlideDrawer({
-        title: 'تخصيص ألوان وهوية الموقع (Theme Palette)',
-        subtitle: 'تحكم فوري في الألوان الرئيسية للموقع بالكامل',
+        title: 'استوديو التصميم والألوان والخطوط (Design System)',
+        subtitle: 'معاينة فورية حية على الموقع قبل الحفظ — أو اختر طابعاً جاهزاً بضغطة واحدة',
         bodyHtml: `
           <form id="live-sec-form" class="adm-drawer-form">
-            <div class="adm-form-grid">
-              ${renderSchemaFieldHtml({ key: 'navy', label: 'اللون الأساسي الكحلي (Primary Navy)', type: 'color', full: true }, th.navy)}
-              ${renderSchemaFieldHtml({ key: 'gold', label: 'اللون الذهبي المميز (Accent Gold)', type: 'color', full: true }, th.gold)}
-              ${renderSchemaFieldHtml({ key: 'cream', label: 'خلفية الصفحات الفاتحة (Background Cream)', type: 'color', full: true }, th.cream)}
+            <div class="adm-theme-presets">
+              <span class="adm-field-lbl" style="grid-column:1/-1">قوالب ألوان فاخرة بضغطة واحدة (Presets)</span>
+              ${Object.entries(LUXURY_THEME_PRESETS).map(([k, p]) => `
+                <button type="button" class="adm-preset-chip ${th.preset === k ? 'is-selected' : ''}" data-theme-preset="${k}">
+                  <span class="adm-preset-dots">
+                    <i style="background:${p.navy}"></i>
+                    <i style="background:${p.gold}"></i>
+                    <i style="background:${p.cream};border:1px solid #ccc"></i>
+                  </span>
+                  <span>${esc(p.label)}</span>
+                </button>
+              `).join('')}
             </div>
+            <hr class="adm-sep">
+            <div class="adm-form-grid">
+              ${renderSchemaFieldHtml({ key: 'navy', label: 'اللون الأساسي الكحلي (Primary)', type: 'color', full: true }, th.navy)}
+              ${renderSchemaFieldHtml({ key: 'gold', label: 'اللون الذهبي المميز (Accent)', type: 'color', full: true }, th.gold)}
+              ${renderSchemaFieldHtml({ key: 'cream', label: 'خلفية الصفحات الفاتحة (Surface)', type: 'color', full: true }, th.cream)}
+              <label class="full-col">حجم الخط العام للموقع (<span id="lbl-font-scale">${Math.round((Number(th.fontScale) || 1) * 100)}%</span>)
+                <input type="range" name="fontScale" min="0.90" max="1.14" step="0.02" value="${Number(th.fontScale) || 1}">
+              </label>
+              <label class="full-col">استدارة الأزرار والكروت (<span id="lbl-radius-val">${Number(th.radius ?? 2)}px</span>)
+                <input type="range" name="radius" min="0" max="16" step="2" value="${Number(th.radius ?? 2)}">
+              </label>
+            </div>
+            <input type="hidden" name="preset" value="${esc(th.preset || 'royal-navy')}">
             <button type="button" id="btn-reset-theme" class="adm-btn-outline-sm" style="margin-top:14px">↺ استعادة ألوان NileTrails الأصلية</button>
           </form>
         `,
-        footerHtml: `<button type="button" class="adm-btn-outline" id="btn-live-cancel">إلغاء</button><button type="submit" form="live-sec-form" class="adm-btn-gold">تطبيق الألوان ✓</button>`,
+        footerHtml: `<button type="button" class="adm-btn-outline" id="btn-live-cancel">إلغاء</button><button type="submit" form="live-sec-form" class="adm-btn-gold">حفظ وتطبيق الهوية ✓</button>`,
         onOpen: (dlg) => {
-          $('#btn-live-cancel', dlg)?.addEventListener('click', () => dlg.close());
-          $('#btn-reset-theme', dlg)?.addEventListener('click', () => {
-            dlg.querySelector('[name="navy"]').value = '#0d2a3a';
-            dlg.querySelector('[name="gold"]').value = '#c7a36a';
-            dlg.querySelector('[name="cream"]').value = '#fcfaf6';
+          const readForm = () => ({
+            navy: dlg.querySelector('[name="navy"]').value,
+            gold: dlg.querySelector('[name="gold"]').value,
+            cream: dlg.querySelector('[name="cream"]').value,
+            fontScale: Number(dlg.querySelector('[name="fontScale"]').value) || 1,
+            radius: Number(dlg.querySelector('[name="radius"]').value) || 0,
+            preset: dlg.querySelector('[name="preset"]').value || 'custom'
           });
+          const syncLivePreview = () => {
+            const cur = readForm();
+            const fsEl = $('#lbl-font-scale', dlg);
+            const rdEl = $('#lbl-radius-val', dlg);
+            if (fsEl) fsEl.textContent = `${Math.round(cur.fontScale * 100)}%`;
+            if (rdEl) rdEl.textContent = `${cur.radius}px`;
+            dlg.querySelectorAll('input[type="color"]').forEach(c => {
+              const code = c.parentElement?.querySelector('code');
+              if (code) code.textContent = c.value;
+            });
+            applyPreviewCss(cur);
+          };
+
+          $$('input[type="color"], input[type="range"]', dlg).forEach(inp => {
+            inp.addEventListener('input', () => {
+              dlg.querySelector('[name="preset"]').value = 'custom';
+              $$('[data-theme-preset]', dlg).forEach(b => b.classList.remove('is-selected'));
+              syncLivePreview();
+            });
+          });
+
+          $$('[data-theme-preset]', dlg).forEach(btn => {
+            btn.addEventListener('click', () => {
+              const p = LUXURY_THEME_PRESETS[btn.dataset.themePreset];
+              if (!p) return;
+              dlg.querySelector('[name="navy"]').value = p.navy;
+              dlg.querySelector('[name="gold"]').value = p.gold;
+              dlg.querySelector('[name="cream"]').value = p.cream;
+              dlg.querySelector('[name="fontScale"]').value = p.fontScale;
+              dlg.querySelector('[name="radius"]').value = p.radius;
+              dlg.querySelector('[name="preset"]').value = btn.dataset.themePreset;
+              $$('[data-theme-preset]', dlg).forEach(b => b.classList.toggle('is-selected', b === btn));
+              syncLivePreview();
+            });
+          });
+
+          $('#btn-reset-theme', dlg)?.addEventListener('click', () => {
+            dlg.querySelector('[data-theme-preset="royal-navy"]')?.click();
+          });
+
+          dlg.addEventListener('close', () => {
+            if (!committed) applyPreviewCss(th);
+          });
+
+          $('#btn-live-cancel', dlg)?.addEventListener('click', () => dlg.close());
           $('#live-sec-form', dlg)?.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const fd = new FormData(e.target);
-            s.theme = { navy: fd.get('navy'), gold: fd.get('gold'), cream: fd.get('cream') };
+            s.theme = readForm();
             st.settings = s;
+            committed = true;
             dlg.close();
-            await commitAndFinish('تم تحديث ألوان وهوية الموقع');
+            await commitAndFinish('تم حفظ وتطبيق هوية التصميم الجديدة ✓');
           });
         }
       });
@@ -1932,6 +2545,7 @@ window.NileTrailsAdmin = (() => {
   function openCollectionDrawer(st, collKey, idx, containerSelector) {
     const item = st[collKey]?.[idx];
     if (!item) return;
+    const beforeSnap = captureSnapshot();
     const isStory = collKey === 'stories';
     const titleVal = isStory ? item.title : item.name;
     const subVal = isStory ? item.excerpt : (collKey === 'destinations' ? item.desc : item.sub);
@@ -1988,7 +2602,7 @@ window.NileTrailsAdmin = (() => {
           item.enabled = fd.get('enabled') === 'on';
           item.showOnHome = fd.get('showOnHome') === 'on';
           dlg.close();
-          await saveAndRefresh(containerSelector, 'تم حفظ التعديلات بنجاح');
+          await saveAndRefresh(containerSelector, 'تم حفظ التعديلات بنجاح', beforeSnap);
         });
       }
     });
@@ -2228,56 +2842,10 @@ window.NileTrailsAdmin = (() => {
     });
 
     const addVessel = async (isDahabiya) => {
-      const id = (isDahabiya ? 'dahabiya-' : 'cruise-') + Date.now();
-      const newObj = {
-        id,
-        slug: (isDahabiya ? 'new-dahabiya-' : 'new-cruise-') + Math.floor(100 + Math.random() * 900),
-        title: isDahabiya ? 'New Boutique Dahabiya' : 'New 5-Star Nile Cruise',
-        tier: 'Luxury',
-        nights: 4,
-        basePrice: 890,
-        route: 'Luxor – Aswan',
-        image: isDahabiya ? 'assets/nile-sailing.webp' : 'assets/nile-cruise.webp',
-        heroVideo: isDahabiya ? 'assets/videos/hero-dahabiya-1.mp4' : 'assets/videos/hero-cruise-1.mp4',
-        kind: isDahabiya ? 'dahabiya' : 'cruise',
-        sub: 'Newly added Nile vessel ready for customization.',
-        facilities: [...(CMS.DEFAULT_FACILITIES || [])],
-        enabled: true,
-        showOnHome: true,
-        programs: [{
-          id: id + '-prog-1',
-          slug: '4-nights-luxor-to-aswan',
-          tabLabel: '4 Nights',
-          tabSub: 'Luxor → Aswan',
-          title: '5 Days / 4 Nights — Luxor to Aswan Program',
-          nights: 4,
-          duration: '5 Days / 4 Nights',
-          route: 'Luxor → Esna → Edfu → Kom Ombo → Aswan',
-          basePrice: 890,
-          canBeAddonForOthers: true,
-          heroVideo: isDahabiya ? 'assets/videos/hero-dahabiya-1.mp4' : 'assets/videos/hero-cruise-1.mp4',
-          summary: 'Full-board sailing program with private Egyptologist.',
-          facilities: [...(CMS.DEFAULT_FACILITIES || [])],
-          allowedAddonIds: ['ALL'],
-          pricingSeasons: { summer: { triple: 850, double: 890, single: 1470 }, winter: { triple: 1020, double: 1050, single: 1690 } },
-          itinerary: [
-            { day: 'Day 1', stop: 'Luxor', title: 'Embarkation & Karnak Temple', desc: 'Check-in & East Bank guided tour.', meals: 'Lunch & Dinner' },
-            { day: 'Day 2', stop: 'West Bank', title: 'Valley of the Kings & Sail to Edfu', desc: 'Royal tombs & Hatshepsut Temple.', meals: 'Breakfast, Lunch & Dinner' },
-            { day: 'Day 3', stop: 'Kom Ombo', title: 'Edfu & Kom Ombo Temples', desc: 'Sail south toward Aswan.', meals: 'Breakfast, Lunch & Dinner' },
-            { day: 'Day 4', stop: 'Aswan', title: 'Philae Temple & Disembarkation', desc: 'Island temple visit & farewell.', meals: 'Breakfast' }
-          ],
-          cabins: [
-            { id: 'triple-cabin', name: 'Triple Cabin', priceDelta: -40, desc: '3 persons sharing' },
-            { id: 'double-cabin', name: 'Double Cabin', priceDelta: 0, desc: '2 persons sharing' },
-            { id: 'single-cabin', name: 'Single Cabin', priceDelta: 580, desc: 'Private sole use' }
-          ],
-          included: ['Full board meals onboard', 'Licensed Egyptologist guide'],
-          excluded: ['International flights', 'Optional sightseeing tours']
-        }]
-      };
+      const newObj = buildDefaultVessel(isDahabiya);
       if (isDahabiya) st.dahabiyas.unshift(newObj);
       else st.cruises.unshift(newObj);
-      selectedVesselId = id;
+      selectedVesselId = newObj.id;
       await saveAndRefresh(containerSelector, `تم إضافة "${newObj.title}"`);
     };
 
@@ -2303,38 +2871,17 @@ window.NileTrailsAdmin = (() => {
       const vid = $('#btn-add-program').dataset.vesselId;
       const target = [...(st.cruises || []), ...(st.dahabiyas || [])].find(x => x.id === vid);
       if (!target) return;
-      const pid = vid + '-prog-' + Date.now();
-      const newProg = {
-        id: pid,
-        slug: 'custom-program-' + Math.floor(100 + Math.random() * 900),
+      const newProg = buildDefaultProgram(target, {
         tabLabel: '3 Nights',
         tabSub: 'Aswan → Luxor',
         title: 'Custom Nile Program (Aswan to Luxor)',
         nights: 3,
         duration: '4 Days / 3 Nights',
-        route: 'Aswan → Kom Ombo → Edfu → Luxor',
-        basePrice: 780,
-        canBeAddonForOthers: true,
-        heroVideo: target.heroVideo || 'assets/videos/hero-cruise-1.mp4',
-        summary: 'Tailored sailing itinerary with private Egyptologist.',
-        facilities: [...(CMS.DEFAULT_FACILITIES || [])],
-        allowedAddonIds: ['ALL'],
-        pricingSeasons: { summer: { triple: 750, double: 780, single: 1290 }, winter: { triple: 890, double: 920, single: 1480 } },
-        itinerary: [
-          { day: 'Day 1', stop: 'Aswan', title: 'Embarkation & Philae Temple', desc: 'Private island transfer.', meals: 'Lunch & Dinner' },
-          { day: 'Day 2', stop: 'Edfu', title: 'Kom Ombo & Horus Temple', desc: 'Scenic Nile sailing.', meals: 'Breakfast, Lunch & Dinner' },
-          { day: 'Day 3', stop: 'Luxor', title: 'Valley of the Kings & Karnak', desc: 'Full day guided exploration.', meals: 'Breakfast' }
-        ],
-        cabins: [
-          { id: 'double-cabin', name: 'Double Cabin', priceDelta: 0, desc: 'Standard river-view cabin' },
-          { id: 'royal-suite', name: 'Royal Panoramic Suite', priceDelta: 420, desc: 'Luxury upper deck' }
-        ],
-        included: ['Full-board onboard', 'Licensed Egyptologist'],
-        excluded: ['Optional balloon & Abu Simbel']
-      };
+        route: 'Aswan → Kom Ombo → Edfu → Luxor'
+      });
       target.programs.push(newProg);
       await saveAndRefresh(containerSelector, 'تم إضافة البرنامج — اضغط تعديل لفتح المحرر');
-      openProgramDrawer(st, vid, pid, containerSelector);
+      openProgramDrawer(st, vid, newProg.id, containerSelector);
     });
 
     $$('[data-quick-prog-price]').forEach(inp => {
@@ -2390,21 +2937,7 @@ window.NileTrailsAdmin = (() => {
 
     $('#btn-add-sightseeing')?.addEventListener('click', async () => {
       if (!Array.isArray(st.sightseeingPlaces)) st.sightseeingPlaces = [];
-      st.sightseeingPlaces.unshift({
-        id: 'sight-' + Date.now(),
-        slug: 'custom-sightseeing-' + Math.floor(100 + Math.random() * 900),
-        location: 'Aswan Nuba',
-        title: 'New Guided Sightseeing Excursion',
-        highlights: 'Guided visit with licensed private Egyptologist, entry tickets and private transfers.',
-        shortDesc: 'Guided visit with licensed private Egyptologist, entry tickets and private transfers.',
-        fullOverview: 'Experience this historic Nile monument with your personal licensed Egyptologist guide.',
-        duration: '3 Hours',
-        price: 55,
-        priceUnit: 'per person',
-        image: 'assets/egypt-temple.webp',
-        enabled: true,
-        canAddToJourney: true
-      });
+      st.sightseeingPlaces.unshift(buildDefaultSightseeing());
       await saveAndRefresh(containerSelector, 'تم إضافة مزار جديد');
       openSightDrawer(st, 0, containerSelector);
     });
@@ -2445,19 +2978,7 @@ window.NileTrailsAdmin = (() => {
 
     // Add-ons quick actions + drawer
     $('#btn-add-addon')?.addEventListener('click', async () => {
-      st.addons.unshift({
-        id: 'addon-' + Date.now(),
-        title: 'New Program Extension / Add-on',
-        type: 'program-extension',
-        category: 'Other Program Extension',
-        duration: '+2 Days / 1 Night',
-        price: 290,
-        priceUnit: 'per person',
-        summary: 'Extend your Nile cruise seamlessly.',
-        image: 'assets/egypt-temple.webp',
-        enabled: true,
-        showOnHome: false
-      });
+      st.addons.unshift(buildDefaultAddon());
       await saveAndRefresh(containerSelector, 'تم إضافة Add-on جديد');
       openAddonDrawer(st, 0, containerSelector);
     });
@@ -2551,27 +3072,9 @@ window.NileTrailsAdmin = (() => {
     });
 
     $('#btn-add-custom-page')?.addEventListener('click', async () => {
-      const id = 'page-' + Date.now();
-      st.customPages.push({
-        id,
-        slug: 'custom-experience-' + Math.floor(100 + Math.random() * 900),
-        title: 'New Custom Egypt Experience',
-        heroEyebrow: 'TAILOR-MADE COLLECTION',
-        heroSub: 'Describe your new destination, package, or special seasonal offer here.',
-        heroImage: 'assets/egypt-temple.webp',
-        enabled: true,
-        showOnHome: true,
-        showInNavbar: true,
-        navParent: 'beyond-the-nile',
-        blocks: [{
-          type: 'text-image',
-          eyebrow: 'FEATURED EXPERIENCE',
-          heading: 'Crafted around your curiosity.',
-          body: 'Add custom paragraphs, photos, and call-to-action buttons from the page builder.',
-          image: 'assets/nile-sailing.webp'
-        }]
-      });
-      editingPageId = id;
+      const newPage = buildDefaultCustomPage();
+      st.customPages.push(newPage);
+      editingPageId = newPage.id;
       await saveAndRefresh(containerSelector, 'تم إنشاء صفحة جديدة');
     });
 
@@ -2810,29 +3313,36 @@ window.NileTrailsAdmin = (() => {
     renderAdmin,
     isEditMode,
     setEditMode,
+    getSubMode,
+    setSubMode,
+    getPreviewDevice,
+    setPreviewDevice,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    saveInlinePath,
     openLiveEditor: openLiveSectionEditor,
     openTab: (tabId) => { activeTab = tabId; },
     toggleHomeSectionVisibility: async (secId, onDone) => {
       const st = CMS.getState();
+      const beforeSnap = captureSnapshot();
       const list = st.homeConfig?.sections || [];
       const item = list.find(x => x.id === secId);
       if (item) {
         item.enabled = item.enabled === false;
-        await CMS.save();
-        showToast(item.enabled ? `تم إظهار "${secId}"` : `تم إخفاء "${secId}"`);
-        if (onDone) onDone();
+        await finishSave(typeof onDone === 'function' ? onDone : null, item.enabled ? `تم إظهار "${secId}"` : `تم إخفاء "${secId}"`, beforeSnap);
       }
     },
     moveHomeSection: async (secId, dir, onDone) => {
       const st = CMS.getState();
+      const beforeSnap = captureSnapshot();
       const list = st.homeConfig?.sections || [];
       const idx = list.findIndex(x => x.id === secId);
       const target = idx + dir;
       if (idx >= 0 && target >= 0 && target < list.length) {
         [list[idx], list[target]] = [list[target], list[idx]];
-        await CMS.save();
-        showToast('تم تغيير ترتيب القسم في الصفحة الرئيسية');
-        if (onDone) onDone();
+        await finishSave(typeof onDone === 'function' ? onDone : null, 'تم تغيير ترتيب القسم في الصفحة الرئيسية', beforeSnap);
       }
     }
   };
