@@ -255,14 +255,37 @@ window.NileTrailsAdmin = (() => {
     return newItem;
   }
 
+  function ensureDomRegionOps(st, regionKey) {
+    if (!st.domEdits || typeof st.domEdits !== 'object') st.domEdits = {};
+    if (!Array.isArray(st.domEdits[regionKey])) st.domEdits[regionKey] = [];
+    return st.domEdits[regionKey];
+  }
+
+  function makeDomOpUid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  async function moveListItem(listPath, itemKey, delta, meta = {}, onDone = null) {
+    const st = CMS.getState();
+    const beforeSnap = captureSnapshot();
+    const arr = resolveOrInitList(st, listPath, meta.fallbackData);
+    if (!arr) return false;
+    const idx = findListItemIndex(arr, itemKey);
+    const nextIdx = idx + Number(delta || 0);
+    if (idx < 0 || nextIdx < 0 || nextIdx >= arr.length || idx === nextIdx) return false;
+    const [moved] = arr.splice(idx, 1);
+    arr.splice(nextIdx, 0, moved);
+    await finishSave(typeof onDone === 'function' ? () => onDone(nextIdx) : null, `تم تغيير ترتيب "${meta.kindLabel || 'العنصر'}" ✓`, beforeSnap);
+    return true;
+  }
+
   async function recordDomDelete(payload, onDone = null) {
     if (!payload || !payload.targetSel || !payload.regionKey) return null;
     const st = CMS.getState();
     const beforeSnap = captureSnapshot();
-    if (!st.domEdits || typeof st.domEdits !== 'object') st.domEdits = {};
-    if (!Array.isArray(st.domEdits[payload.regionKey])) st.domEdits[payload.regionKey] = [];
-    const uid = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    st.domEdits[payload.regionKey].push({
+    const ops = ensureDomRegionOps(st, payload.regionKey);
+    const uid = makeDomOpUid();
+    ops.push({
       id: 'de-' + uid,
       op: 'delete',
       targetSel: payload.targetSel,
@@ -290,12 +313,11 @@ window.NileTrailsAdmin = (() => {
     if (!payload || !payload.regionKey || !payload.cleanHtml) return null;
     const st = CMS.getState();
     const beforeSnap = captureSnapshot();
-    if (!st.domEdits || typeof st.domEdits !== 'object') st.domEdits = {};
-    if (!Array.isArray(st.domEdits[payload.regionKey])) st.domEdits[payload.regionKey] = [];
-    const uid = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const ops = ensureDomRegionOps(st, payload.regionKey);
+    const uid = makeDomOpUid();
     const edit = {
       id: 'de-' + uid,
-      op: 'insert_after',
+      op: payload.position === 'before' ? 'insert_before' : 'insert_after',
       targetSel: payload.targetSel || '',
       parentSel: payload.parentSel || '',
       html: payload.cleanHtml,
@@ -303,9 +325,96 @@ window.NileTrailsAdmin = (() => {
       label: payload.kindLabel || '',
       ts: Date.now()
     };
-    st.domEdits[payload.regionKey].push(edit);
-    await finishSave(typeof onDone === 'function' ? onDone : null, `تم إضافة "${payload.kindLabel || 'عنصر'}" من نفس النوع ✓`, beforeSnap);
+    ops.push(edit);
+    await finishSave(typeof onDone === 'function' ? () => onDone(edit) : null, `تم إضافة "${payload.kindLabel || 'عنصر'}" ✓`, beforeSnap);
     return edit;
+  }
+
+  async function recordDomStyle(payload, onDone = null) {
+    if (!payload || !payload.regionKey || !payload.targetSel) return null;
+    const st = CMS.getState();
+    const beforeSnap = captureSnapshot();
+    const ops = ensureDomRegionOps(st, payload.regionKey);
+    if (payload.reset) {
+      st.domEdits[payload.regionKey] = ops.filter(o => !(o.op === 'set_style' && o.targetSel === payload.targetSel));
+      await finishSave(typeof onDone === 'function' ? onDone : null, 'تمت استعادة التنسيق الأصلي للعنصر ✓', beforeSnap);
+      return true;
+    }
+    const cleanStyles = {};
+    for (const [k, v] of Object.entries(payload.styles || {})) {
+      if (v !== undefined && v !== null) cleanStyles[k] = String(v);
+    }
+    let existing = null;
+    for (let i = ops.length - 1; i >= 0; i--) {
+      if (ops[i].op !== 'set_style' && ops[i].op !== 'set_attr') break;
+      if (ops[i].op === 'set_style' && ops[i].targetSel === payload.targetSel) { existing = ops[i]; break; }
+    }
+    if (existing) {
+      existing.styles = { ...(existing.styles || {}), ...cleanStyles };
+      existing.ts = Date.now();
+    } else {
+      ops.push({
+        id: 'de-' + makeDomOpUid(),
+        op: 'set_style',
+        targetSel: payload.targetSel,
+        styles: cleanStyles,
+        ts: Date.now()
+      });
+    }
+    await finishSave(typeof onDone === 'function' ? onDone : null, payload.toastMsg || 'تم حفظ تنسيق العنصر ✓', beforeSnap);
+    return true;
+  }
+
+  async function recordDomAttr(payload, onDone = null) {
+    if (!payload || !payload.regionKey || !payload.targetSel) return null;
+    const st = CMS.getState();
+    const beforeSnap = captureSnapshot();
+    if (payload.livePath && payload.liveVal !== undefined) {
+      setPathValue(st, payload.livePath, payload.liveVal);
+    } else {
+      const ops = ensureDomRegionOps(st, payload.regionKey);
+      const safeAttrs = {};
+      for (const [k, v] of Object.entries(payload.attrs || {})) {
+        if (/^on/i.test(k)) continue;
+        if ((k === 'href' || k === 'src') && /^\s*javascript:/i.test(String(v || ''))) continue;
+        safeAttrs[k] = String(v ?? '');
+      }
+      let existing = null;
+      for (let i = ops.length - 1; i >= 0; i--) {
+        if (ops[i].op !== 'set_style' && ops[i].op !== 'set_attr') break;
+        if (ops[i].op === 'set_attr' && ops[i].targetSel === payload.targetSel) { existing = ops[i]; break; }
+      }
+      if (existing) {
+        existing.attrs = { ...(existing.attrs || {}), ...safeAttrs };
+        existing.ts = Date.now();
+      } else {
+        ops.push({
+          id: 'de-' + makeDomOpUid(),
+          op: 'set_attr',
+          targetSel: payload.targetSel,
+          attrs: safeAttrs,
+          ts: Date.now()
+        });
+      }
+    }
+    await finishSave(typeof onDone === 'function' ? onDone : null, payload.toastMsg || 'تم تحديث خصائص العنصر ✓', beforeSnap);
+    return true;
+  }
+
+  async function recordDomMove(payload, onDone = null) {
+    if (!payload || !payload.regionKey || !payload.targetSel || !payload.delta) return null;
+    const st = CMS.getState();
+    const beforeSnap = captureSnapshot();
+    const ops = ensureDomRegionOps(st, payload.regionKey);
+    ops.push({
+      id: 'de-' + makeDomOpUid(),
+      op: 'move_sibling',
+      targetSel: payload.targetSel,
+      delta: Number(payload.delta) > 0 ? 1 : -1,
+      ts: Date.now()
+    });
+    await finishSave(typeof onDone === 'function' ? onDone : null, 'تم تغيير ترتيب العنصر ✓', beforeSnap);
+    return true;
   }
 
   async function addElementFromDeletedType(typeId, onDone = null) {
@@ -3593,8 +3702,13 @@ window.NileTrailsAdmin = (() => {
     saveTextOverride,
     deleteListItem,
     addListItemOfType,
+    moveListItem,
     recordDomDelete,
     recordDomDuplicate,
+    recordDomStyle,
+    recordDomAttr,
+    recordDomMove,
+    uploadMediaFile,
     addElementFromDeletedType,
     clearDeletedElementTypes,
     showActionToast,

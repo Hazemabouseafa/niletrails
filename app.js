@@ -2116,7 +2116,7 @@
   const UTX_SKIP_SELECTOR = [
     '.nt-live-toolbar', '.nt-live-sec-bar', '.nt-live-inline-bar', '.nt-live-popover',
     '.nt-live-card-ctrl', '.nt-live-faq-edit', '.nt-live-hidden-stub', '.floating-admin-bar',
-    '.nt-live-list-add-wrap', '.nt-live-list-add', '#nt-el-studio-bar',
+    '.nt-live-list-add-wrap', '.nt-live-list-add', '#nt-el-studio-bar', '#nt-el-inspector',
     '.nt-preview-stage', '.nt-preview-bezel', '.adm-shell', 'dialog',
     'script', 'style', 'noscript', 'svg', 'path', 'img', 'video', 'iframe',
     'input', 'textarea', 'select', 'option', 'datalist',
@@ -2274,6 +2274,88 @@
     walk(rootEl);
   }
 
+  function startInlineTextEdit(el, opts = {}) {
+    if (!el || !isLiveEdit() || el.isContentEditable) return false;
+    const adm = window.NileTrailsAdmin;
+    const path = el.dataset.liveText || '';
+    const utxKey = el.dataset.utxKey || '';
+    if (!path && !utxKey) return false;
+    const isHtml = el.dataset.liveHtml === '1' || el.dataset.utxHtml === '1';
+    const origContent = isHtml ? el.innerHTML : el.textContent;
+
+    if (opts.pinStudio !== false) {
+      const targetContainer = resolveEditableElement(el) || el;
+      showElementStudioFor(targetContainer, true);
+    }
+
+    el.contentEditable = 'true';
+    el.classList.add('nt-live-editing-now');
+    el.focus();
+
+    let editDone = false;
+    const finishEdit = async (commit) => {
+      if (editDone) return;
+      editDone = true;
+      el.removeEventListener('blur', onBlur);
+      el.removeEventListener('keydown', onKey);
+      el.removeEventListener('keyup', onKeyUp);
+      el.contentEditable = 'false';
+      el.classList.remove('nt-live-editing-now');
+      if (!commit) {
+        if (isHtml) el.innerHTML = origContent;
+        else el.textContent = origContent;
+        return;
+      }
+      const rawNext = isHtml ? sanitizeLiveHtml(el.innerHTML) : el.textContent.trim();
+      if (rawNext !== String(origContent).trim() && rawNext.length > 0) {
+        const savePromise = path
+          ? adm?.saveInlinePath?.(path, rawNext, null)
+          : (utxKey ? adm?.saveTextOverride?.(utxKey, rawNext, null) : null);
+        if (path) {
+          $$('[data-live-text]', $('#app')).forEach(other => {
+            if (other === el || other.dataset.liveText !== path) return;
+            if (isHtml) other.innerHTML = rawNext;
+            else other.textContent = rawNext;
+          });
+        }
+        syncToolbarHistoryButtons();
+        await savePromise;
+        syncToolbarHistoryButtons();
+      } else if (!rawNext.length) {
+        if (isHtml) el.innerHTML = origContent;
+        else el.textContent = origContent;
+      }
+      if (studioLocked && studioTrackedEl?.isConnected) {
+        showElementStudioFor(studioTrackedEl, true);
+      }
+    };
+
+    const onBlur = () => finishEdit(true);
+    const onKey = (ke) => {
+      ke.stopPropagation();
+      if (ke.key === 'Escape') {
+        ke.preventDefault();
+        finishEdit(false);
+        el.blur();
+      } else if (ke.key === 'Enter' && !ke.shiftKey) {
+        ke.preventDefault();
+        finishEdit(true);
+        el.blur();
+      }
+    };
+    const onKeyUp = (ke) => {
+      if (ke.key === ' ' && el.closest('button, summary')) {
+        ke.preventDefault();
+      }
+      ke.stopPropagation();
+    };
+
+    el.addEventListener('blur', onBlur);
+    el.addEventListener('keydown', onKey);
+    el.addEventListener('keyup', onKeyUp);
+    return true;
+  }
+
   function enableInlineEditingIn(containerEl) {
     if (!containerEl || !isLiveEdit()) return;
     const adm = window.NileTrailsAdmin;
@@ -2293,79 +2375,11 @@
         if (e.type !== (subMode === 'select' ? 'click' : 'dblclick')) return;
         e.preventDefault();
         e.stopPropagation();
-        if (el.isContentEditable) return;
-
-        const path = el.dataset.liveText || '';
-        const utxKey = el.dataset.utxKey || '';
-        const isHtml = el.dataset.liveHtml === '1' || el.dataset.utxHtml === '1';
-        const origContent = isHtml ? el.innerHTML : el.textContent;
-        hideElementStudioBar();
-        el.contentEditable = 'true';
-        el.classList.add('nt-live-editing-now');
-        el.focus();
-
-        let editDone = false;
-        const finishEdit = async (commit) => {
-          if (editDone) return;
-          editDone = true;
-          el.removeEventListener('blur', onBlur);
-          el.removeEventListener('keydown', onKey);
-          el.removeEventListener('keyup', onKeyUp);
-          el.contentEditable = 'false';
-          el.classList.remove('nt-live-editing-now');
-          if (!commit) {
-            if (isHtml) el.innerHTML = origContent;
-            else el.textContent = origContent;
-            return;
-          }
-          const rawNext = isHtml ? sanitizeLiveHtml(el.innerHTML) : el.textContent.trim();
-          if (rawNext !== String(origContent).trim() && rawNext.length > 0) {
-            const savePromise = path
-              ? adm?.saveInlinePath?.(path, rawNext, null)
-              : (utxKey ? adm?.saveTextOverride?.(utxKey, rawNext, null) : null);
-            if (path) {
-              $$('[data-live-text]', $('#app')).forEach(other => {
-                if (other === el || other.dataset.liveText !== path) return;
-                if (isHtml) other.innerHTML = rawNext;
-                else other.textContent = rawNext;
-              });
-            }
-            syncToolbarHistoryButtons();
-            await savePromise;
-            syncToolbarHistoryButtons();
-          } else if (!rawNext.length) {
-            if (isHtml) el.innerHTML = origContent;
-            else el.textContent = origContent;
-          }
-        };
-
-        const onBlur = () => finishEdit(true);
-        const onKey = (ke) => {
-          ke.stopPropagation();
-          if (ke.key === 'Escape') {
-            ke.preventDefault();
-            finishEdit(false);
-            el.blur();
-          } else if (ke.key === 'Enter' && !ke.shiftKey) {
-            ke.preventDefault();
-            finishEdit(true);
-            el.blur();
-          }
-        };
-        const onKeyUp = (ke) => {
-          if (ke.key === ' ' && el.closest('button, summary')) {
-            ke.preventDefault();
-          }
-          ke.stopPropagation();
-        };
-
-        el.addEventListener('blur', onBlur);
-        el.addEventListener('keydown', onKey);
-        el.addEventListener('keyup', onKeyUp);
+        startInlineTextEdit(el, { pinStudio: true });
       };
 
       el.addEventListener('click', activateEditor);
-      if (subMode === 'browse') {
+      if (subMode === 'browse' || subMode === 'elements') {
         el.addEventListener('dblclick', activateEditor);
       }
     });
@@ -2374,7 +2388,7 @@
   /* =======================================================================
      UNIVERSAL ELEMENT DELETE & ADD-SAME-TYPE ENGINE (domEdits + Inspector)
      ======================================================================= */
-  const LIVE_CHROME_SEL = '.nt-live-sec-bar, .nt-live-inline-bar, .nt-live-card-ctrl, .nt-live-faq-edit, .nt-live-list-add-wrap, .nt-live-toolbar, .nt-live-popover, #nt-el-studio-bar';
+  const LIVE_CHROME_SEL = '.nt-live-sec-bar, .nt-live-inline-bar, .nt-live-card-ctrl, .nt-live-faq-edit, .nt-live-list-add-wrap, .nt-live-toolbar, .nt-live-popover, #nt-el-studio-bar, #nt-el-inspector';
   const SHELL_PROTECTED_SEL = 'html, body, #app, main, header.site-header, .header-inner, .logo, footer.site-footer, .nt-live-sec, .hero-video-wrap, .nct-hero-shade, .tile-shade, .hero-gradient';
 
   function getCurrentRouteScope() {
@@ -2509,12 +2523,45 @@
     return el;
   }
 
+  const ALLOWED_DOM_STYLE_PROPS = new Set([
+    'color', 'backgroundColor', 'fontSize', 'fontWeight', 'textAlign', 'padding',
+    'borderRadius', 'opacity', 'display', 'letterSpacing', 'lineHeight',
+    'marginTop', 'marginBottom', 'borderColor', 'borderWidth', 'borderStyle', 'maxWidth'
+  ]);
+  const ALLOWED_DOM_ATTR_NAMES = new Set(['src', 'alt', 'href', 'target', 'rel']);
+
+  function placeDomInsertedNode(regionRoot, op, newEl) {
+    const anchor = op.targetSel ? resolveDomTarget(regionRoot, op.targetSel) : null;
+    if (anchor && !anchor.matches?.(SHELL_PROTECTED_SEL)) {
+      const anchorHost = anchor.parentElement?.classList?.contains('nt-live-sec') ? anchor.parentElement : anchor;
+      if (op.op === 'insert_before') anchorHost.before(newEl);
+      else anchorHost.after(newEl);
+      return true;
+    }
+    const parentNode = op.parentSel ? resolveDomTarget(regionRoot, op.parentSel) : null;
+    if (!parentNode) return false;
+    const kids = getSemanticChildren(parentNode);
+    const idx = parseInsertIndex(op.targetSel);
+    if (idx >= 0 && idx < kids.length) {
+      const slot = kids[idx].parentElement?.classList?.contains('nt-live-sec') ? kids[idx].parentElement : kids[idx];
+      slot.before(newEl);
+    } else if (kids.length > 0) {
+      const last = kids[kids.length - 1];
+      const tail = last.parentElement?.classList?.contains('nt-live-sec') ? last.parentElement : last;
+      tail.after(newEl);
+    } else {
+      parentNode.prepend(newEl);
+    }
+    return true;
+  }
+
   function applyDomEdits(appRoot) {
     const st = CMS.getState();
     const editsByRegion = st.domEdits;
     if (!editsByRegion || typeof editsByRegion !== 'object') return;
     const scope = getCurrentRouteScope();
     if (scope.startsWith('admin')) return;
+    const liveNow = isLiveEdit();
     const pairs = [
       ['header', resolveDomRegionRoot('header')],
       [scope, resolveDomRegionRoot(scope)],
@@ -2531,33 +2578,68 @@
             t.remove();
             if (semWrap && getSemanticChildren(semWrap).length === 0) semWrap.hidden = true;
           }
-        } else if (op.op === 'insert_after' || op.op === 'insert_template') {
+        } else if (op.op === 'insert_after' || op.op === 'insert_before' || op.op === 'insert_template') {
           const newEl = createElementFromTemplate(op.html, op.newId || ('nt-el-' + op.id));
-          if (!newEl) continue;
-          const anchor = op.targetSel ? resolveDomTarget(regionRoot, op.targetSel) : null;
-          if (anchor && !anchor.matches?.(SHELL_PROTECTED_SEL)) {
-            const anchorHost = anchor.parentElement?.classList?.contains('nt-live-sec') ? anchor.parentElement : anchor;
-            anchorHost.after(newEl);
-            continue;
-          }
-          const parentNode = op.parentSel ? resolveDomTarget(regionRoot, op.parentSel) : null;
-          if (parentNode) {
-            const kids = getSemanticChildren(parentNode);
-            const idx = parseInsertIndex(op.targetSel);
-            if (idx >= 0 && idx < kids.length) {
-              const slot = kids[idx].parentElement?.classList?.contains('nt-live-sec') ? kids[idx].parentElement : kids[idx];
-              slot.before(newEl);
-            } else if (kids.length > 0) {
-              const last = kids[kids.length - 1];
-              const tail = last.parentElement?.classList?.contains('nt-live-sec') ? last.parentElement : last;
-              tail.after(newEl);
-            } else {
-              parentNode.prepend(newEl);
+          if (newEl) placeDomInsertedNode(regionRoot, op, newEl);
+        } else if (op.op === 'set_style') {
+          const t = resolveDomTarget(regionRoot, op.targetSel);
+          if (t && op.styles && typeof op.styles === 'object') {
+            for (const [k, v] of Object.entries(op.styles)) {
+              if (!ALLOWED_DOM_STYLE_PROPS.has(k)) continue;
+              if (k === 'display' && v === 'none' && liveNow) {
+                t.dataset.ntLiveHidden = '1';
+                t.classList.add('nt-el-live-hidden');
+              } else {
+                if (k === 'display' && v !== 'none') {
+                  delete t.dataset.ntLiveHidden;
+                  t.classList.remove('nt-el-live-hidden');
+                }
+                t.style[k] = String(v ?? '');
+              }
             }
+          }
+        } else if (op.op === 'set_attr') {
+          const t = resolveDomTarget(regionRoot, op.targetSel);
+          if (t && op.attrs && typeof op.attrs === 'object') {
+            for (const [k, v] of Object.entries(op.attrs)) {
+              if (!ALLOWED_DOM_ATTR_NAMES.has(k)) continue;
+              if ((k === 'href' || k === 'src') && /^\s*javascript:/i.test(String(v || ''))) continue;
+              if (v === '' || v === null || v === undefined) t.removeAttribute(k);
+              else t.setAttribute(k, String(v));
+            }
+          }
+        } else if (op.op === 'move_sibling') {
+          const t = resolveDomTarget(regionRoot, op.targetSel);
+          if (!t || t.matches?.(SHELL_PROTECTED_SEL)) continue;
+          const semP = getSemanticParent(t);
+          if (!semP) continue;
+          const kids = getSemanticChildren(semP);
+          const idx = kids.indexOf(t);
+          const delta = Number(op.delta) > 0 ? 1 : -1;
+          const nextIdx = idx + delta;
+          if (idx >= 0 && nextIdx >= 0 && nextIdx < kids.length && nextIdx !== idx) {
+            const slot = t.parentElement?.classList?.contains('nt-live-sec') ? t.parentElement : t;
+            const peer = kids[nextIdx];
+            const peerHost = peer.parentElement?.classList?.contains('nt-live-sec') ? peer.parentElement : peer;
+            if (delta < 0) peerHost.before(slot);
+            else peerHost.after(slot);
+            t.dataset.ntMovedOp = op.id;
           }
         }
       }
     }
+  }
+
+  function getDomTargetPayload(el) {
+    if (!el) return null;
+    const reg = resolveDomRegionForEl(el);
+    if (!reg || !reg.root) return null;
+    const desc = buildDomDescriptor(el, reg.root);
+    if (!desc) return null;
+    const targetSel = JSON.stringify(desc);
+    const semP = getSemanticParent(el);
+    const parentSel = JSON.stringify(semP === reg.root ? { isRoot: true } : buildDomDescriptor(semP, reg.root));
+    return { regionKey: reg.key, root: reg.root, targetSel, parentSel };
   }
 
   function inferElementKindLabel(el) {
@@ -2576,11 +2658,12 @@
     if (el.matches('article')) return 'بطاقة عنصر';
     if (el.matches('section')) return 'قسم كامل';
     if (el.matches('.photo-frame, figure, img')) return 'صورة';
+    if (el.matches('hr')) return 'فاصل';
     return `عنصر ${el.tagName.toLowerCase()}`;
   }
 
   const EL_INLINE_LEAF_SEL = 'nt-tx, span:not(.signature-points > span), em, strong, b, i, u, small, svg, path, circle, rect, line, polygon';
-  const EL_SEMANTIC_BLOCK_SEL = 'h1, h2, h3, h4, h5, h6, p, li, dt, dd, blockquote, a, button, label.cabin-radio-card, label.addon-select-card, label.field-group, label.spc-add-journey-lbl, label.check-field, div.nct-hl, div.nct-pcard, div.nct-dc-meals-row, article, details, figure, section, div.field-group, div.three-notes > div, div.planner-benefits > div';
+  const EL_SEMANTIC_BLOCK_SEL = 'img, h1, h2, h3, h4, h5, h6, p, li, dt, dd, blockquote, a, button, label.cabin-radio-card, label.addon-select-card, label.field-group, label.spc-add-journey-lbl, label.check-field, div.nct-hl, div.nct-pcard, div.nct-dc-meals-row, .eyebrow, .photo-frame, article, details, figure, section, hr, div.field-group, div.three-notes > div, div.planner-benefits > div';
 
   function resolveEditableElement(rawTarget) {
     if (!rawTarget) return null;
@@ -2607,9 +2690,156 @@
     return getSampleForListPath(el.dataset.liveList, key, el.dataset.liveBasePrice || 750);
   }
 
+  const BRAND_COLOR_SWATCHES = ['#0d2a3a', '#c7a36a', '#1c3948', '#21784e', '#fcfaf6', '#ffffff', '#b91c1c'];
+  const INSERT_BLOCK_PRESETS = [
+    { key: 'heading', icon: 'H', label: 'عنوان', html: '<h3 class="nt-blk-heading" style="margin:12px 0;font-family:var(--serif);color:var(--navy)">عنوان جديد قابل للتعديل</h3>' },
+    { key: 'paragraph', icon: '¶', label: 'فقرة نصية', html: '<p class="nt-blk-para" style="margin:10px 0;line-height:1.7">فقرة نصية جديدة — انقر للتعديل المباشر وإضافة تفاصيل الرحلة أو المزايا.</p>' },
+    { key: 'button', icon: '🔘', label: 'زر إجراء', html: '<a href="#/plan-your-journey" class="button btn-gold nt-blk-btn" style="margin:8px 0">استكشف التفاصيل<span aria-hidden="true">↗</span></a>' },
+    { key: 'badge', icon: '🏷', label: 'شارة', html: '<span class="eyebrow nt-blk-badge" style="margin:6px 0"><span class="eyebrow-mark"></span>شارة مميزة جديدة</span>' },
+    { key: 'card', icon: '📦', label: 'بطاقة ميزة', html: '<div class="nct-hl nt-blk-card"><div class="nct-hl-icon">✦</div><b>ميزة إضافية جديدة</b><small>وصف مختصر يوضح قيمة التجربة للزائر.</small></div>' },
+    { key: 'image', icon: '🖼', label: 'إطار صورة', html: '<figure class="photo-frame nt-blk-img" style="margin:14px 0"><img src="assets/nile-sailing.webp" alt="Nile Sailing Image" loading="lazy"></figure>' },
+    { key: 'divider', icon: '➖', label: 'فاصل', html: '<hr class="nt-blk-divider" style="border:0;border-top:1px solid rgba(199,163,106,0.45);margin:18px 0">' }
+  ];
+
   let studioTrackedEl = null;
   let studioLocked = false;
   let studioHoverTimer = null;
+  let pendingRestoreStudio = null;
+
+  function rgbToHex(rgb) {
+    if (!rgb || rgb === 'transparent' || rgb === 'rgba(0, 0, 0, 0)') return '';
+    const m = String(rgb).match(/\d+/g);
+    if (!m || m.length < 3) return '';
+    return '#' + m.slice(0, 3).map(n => Math.max(0, Math.min(255, Number(n))).toString(16).padStart(2, '0')).join('');
+  }
+
+  function findPrimaryImage(el) {
+    if (!el) return null;
+    if (el.tagName === 'IMG') return el;
+    if (el.matches('section, article.page-shell')) return null;
+    return el.querySelector('img');
+  }
+
+  function findPrimaryLink(el) {
+    if (!el) return null;
+    if (el.tagName === 'A') return el;
+    const up = el.closest('a');
+    if (up && $('#app')?.contains(up)) return up;
+    if (!el.matches('section')) {
+      const links = el.querySelectorAll('a');
+      if (links.length === 1) return links[0];
+    }
+    return null;
+  }
+
+  function findPrimaryTextNode(el) {
+    if (!el) return null;
+    if (el.matches('[data-live-text], [data-utx-key]')) return el;
+    return el.querySelector('[data-live-text], [data-utx-key]');
+  }
+
+  function getLiveMinTop(forEl) {
+    const hdr = document.querySelector('.site-header');
+    if (hdr && !hdr.contains(forEl)) {
+      const hb = hdr.getBoundingClientRect().bottom;
+      const sub = document.querySelector('.nct-subnav');
+      if (sub && !sub.contains(forEl)) {
+        const sb = sub.getBoundingClientRect();
+        if (sb.top <= hb + 4 && getComputedStyle(sub).position === 'sticky') {
+          return Math.max(8, sb.bottom + 4);
+        }
+      }
+      return Math.max(8, hb + 4);
+    }
+    return 8;
+  }
+
+  function positionFloatingOverlay(panel, anchorRect, opts = {}) {
+    if (!panel || !anchorRect) return;
+    panel.style.maxHeight = '';
+    const pw = panel.offsetWidth || 280;
+    const ph = panel.offsetHeight || 36;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const minTop = opts.minTop ?? 8;
+    const gap = opts.gap ?? 6;
+    let topPos;
+    let leftPos;
+    if (opts.preferAbove) {
+      const aboveTop = anchorRect.top - ph - gap;
+      if (aboveTop >= minTop) {
+        topPos = aboveTop;
+      } else {
+        const belowTop = anchorRect.bottom + gap;
+        if (belowTop + ph <= vh - 8) topPos = belowTop;
+        else if (opts.insideFallback) topPos = Math.max(minTop, Math.min(anchorRect.top + gap, vh - ph - 8));
+        else topPos = Math.max(minTop, Math.min(vh - ph - 8, belowTop));
+      }
+      leftPos = Math.max(8, Math.min(vw - pw - 8, anchorRect.right - pw));
+    } else {
+      if (opts.preferSide) {
+        const rightFit = vw - anchorRect.right - gap >= pw + 8;
+        const leftFit = anchorRect.left - gap >= pw + 8;
+        if (rightFit || leftFit) {
+          leftPos = rightFit ? anchorRect.right + gap : anchorRect.left - pw - gap;
+          const maxH = Math.max(200, vh - minTop - 10);
+          panel.style.maxHeight = `${maxH}px`;
+          const usedH = Math.min(ph, maxH);
+          topPos = Math.max(minTop, Math.min(vh - usedH - 8, anchorRect.top));
+          panel.style.top = `${Math.round(topPos)}px`;
+          panel.style.left = `${Math.round(leftPos)}px`;
+          return;
+        }
+      }
+      const belowSpace = Math.max(0, vh - (anchorRect.bottom + gap) - 8);
+      const aboveSpace = Math.max(0, anchorRect.top - gap - minTop);
+      if (belowSpace >= ph || belowSpace >= 220 || belowSpace >= aboveSpace) {
+        panel.style.maxHeight = `${Math.max(180, belowSpace)}px`;
+        topPos = anchorRect.bottom + gap;
+      } else {
+        const capped = Math.max(180, aboveSpace);
+        panel.style.maxHeight = `${capped}px`;
+        topPos = Math.max(minTop, anchorRect.top - gap - Math.min(ph, capped));
+      }
+      leftPos = Math.max(8, Math.min(vw - pw - 8, anchorRect.right - pw));
+    }
+    panel.style.top = `${Math.round(Math.max(minTop, topPos))}px`;
+    panel.style.left = `${Math.round(leftPos)}px`;
+  }
+
+  function positionElementInspector(insp, el, bar) {
+    if (!insp || insp.hidden || !el) return;
+    const anchor = bar && !bar.hidden ? bar.getBoundingClientRect() : el.getBoundingClientRect();
+    positionFloatingOverlay(insp, anchor, {
+      preferAbove: false,
+      preferSide: true,
+      minTop: getLiveMinTop(el),
+      gap: 10
+    });
+  }
+
+  function isPointInHoverBridge(cx, cy, trackedEl, bar) {
+    if (!bar || bar.hidden) return false;
+    const b = bar.getBoundingClientRect();
+    if (cx >= b.left - 16 && cx <= b.right + 16 && cy >= b.top - 18 && cy <= b.bottom + 18) return true;
+    if (!trackedEl || !trackedEl.isConnected) return false;
+    const t = trackedEl.getBoundingClientRect();
+    const minX = Math.max(t.left, b.left) - 12;
+    const maxX = Math.min(t.right, b.right) + 12;
+    const minY = Math.min(t.bottom, b.bottom) - 6;
+    const maxY = Math.max(t.top, b.top) + 6;
+    return minX <= maxX && cx >= minX && cx <= maxX && cy >= minY && cy <= maxY;
+  }
+
+  function hideElementInspector() {
+    const insp = document.getElementById('nt-el-inspector');
+    if (insp) insp.hidden = true;
+    const inspBtn = document.getElementById('nt-el-insp-btn');
+    if (inspBtn) {
+      inspBtn.classList.remove('is-active');
+      inspBtn.setAttribute('aria-pressed', 'false');
+    }
+  }
 
   function hideElementStudioBar() {
     if (studioTrackedEl) {
@@ -2617,8 +2847,325 @@
       studioTrackedEl = null;
     }
     studioLocked = false;
+    hideElementInspector();
     const bar = document.getElementById('nt-el-studio-bar');
     if (bar) bar.hidden = true;
+  }
+
+  function captureStudioRestoreState(el, overrides = {}) {
+    const insp = document.getElementById('nt-el-inspector');
+    const wasInspOpen = Boolean(insp && !insp.hidden);
+    const tab = insp?.dataset?.activeTab || 'style';
+    if (overrides.clear) {
+      pendingRestoreStudio = null;
+      return;
+    }
+    const base = el ? getDomTargetPayload(el) : null;
+    pendingRestoreStudio = {
+      regionKey: base?.regionKey || '',
+      targetSel: overrides.targetSel ?? base?.targetSel ?? '',
+      domId: overrides.domId ?? el?.dataset?.ntDomId ?? '',
+      movedOpId: overrides.movedOpId || '',
+      listPath: overrides.listPath ?? el?.dataset?.liveList ?? '',
+      listIdx: overrides.listIdx,
+      openInspector: overrides.openInspector ?? wasInspOpen,
+      activeTab: overrides.activeTab || tab
+    };
+  }
+
+  function ensureElementInspector() {
+    let insp = document.getElementById('nt-el-inspector');
+    if (insp) return insp;
+    insp = document.createElement('div');
+    insp.id = 'nt-el-inspector';
+    insp.className = 'nt-el-inspector';
+    insp.dir = 'rtl';
+    insp.hidden = true;
+    document.body.appendChild(insp);
+    return insp;
+  }
+
+  function openElementInspector(el, initialTab = 'style') {
+    if (!el || !el.isConnected) return;
+    const insp = ensureElementInspector();
+    const adm = window.NileTrailsAdmin;
+    const cs = getComputedStyle(el);
+    const kind = inferElementKindLabel(el);
+    const imgEl = findPrimaryImage(el);
+    const linkEl = findPrimaryLink(el);
+    const hasMedia = Boolean(imgEl || linkEl);
+    const tab = (initialTab === 'media' && !hasMedia) ? 'style' : initialTab;
+    insp.dataset.activeTab = tab;
+
+    const fontPx = Math.max(10, Math.min(96, parseInt(cs.fontSize, 10) || 16));
+    const padPx = Math.max(0, Math.min(72, parseInt(el.style.padding || cs.paddingTop, 10) || 0));
+    const radPx = Math.max(0, Math.min(48, parseInt(cs.borderRadius, 10) || 0));
+    const opPct = Math.max(10, Math.min(100, Math.round((parseFloat(cs.opacity ?? 1) || 1) * 100)));
+    const curColor = rgbToHex(cs.color) || '#0d2a3a';
+    const curBg = rgbToHex(cs.backgroundColor) || '#ffffff';
+    const curAlign = cs.textAlign || 'start';
+    const curWeight = Number(cs.fontWeight) || 400;
+
+    insp.innerHTML = `
+      <div class="nt-insp-head">
+        <strong>🎨 خصائص: ${esc(kind)}</strong>
+        <div class="nt-insp-tabs" role="tablist">
+          <button type="button" class="${tab === 'style' ? 'is-on' : ''}" data-insp-tab="style">تنسيق</button>
+          ${hasMedia ? `<button type="button" class="${tab === 'media' ? 'is-on' : ''}" data-insp-tab="media">${imgEl ? 'صورة' : 'رابط'}</button>` : ''}
+          <button type="button" class="${tab === 'insert' ? 'is-on' : ''}" data-insp-tab="insert">+ إدراج</button>
+        </div>
+        <button type="button" class="nt-insp-close" data-insp-close title="إغلاق اللوحة">✕</button>
+      </div>
+      <div class="nt-insp-body" data-insp-panel="style" ${tab === 'style' ? '' : 'hidden'}>
+        <div class="nt-insp-row">
+          <label>حجم الخط (<span id="nt-insp-fs-val">${fontPx}px</span>)</label>
+          <input type="range" min="10" max="88" value="${fontPx}" data-insp-style-range="fontSize" data-unit="px" data-val-out="#nt-insp-fs-val">
+        </div>
+        <div class="nt-insp-row">
+          <label>وزن الخط والمحاذاة</label>
+          <div class="nt-insp-pills">
+            <button type="button" class="${curWeight < 550 ? 'is-on' : ''}" data-insp-style-btn="fontWeight" data-val="400">عادي</button>
+            <button type="button" class="${curWeight >= 550 && curWeight < 680 ? 'is-on' : ''}" data-insp-style-btn="fontWeight" data-val="600">متوسط</button>
+            <button type="button" class="${curWeight >= 680 ? 'is-on' : ''}" data-insp-style-btn="fontWeight" data-val="700">عريض</button>
+            <span class="nt-insp-sep">|</span>
+            <button type="button" class="${curAlign === 'right' ? 'is-on' : ''}" data-insp-style-btn="textAlign" data-val="right" title="يمين">⇥</button>
+            <button type="button" class="${curAlign === 'center' ? 'is-on' : ''}" data-insp-style-btn="textAlign" data-val="center" title="وسط">↔</button>
+            <button type="button" class="${curAlign === 'left' ? 'is-on' : ''}" data-insp-style-btn="textAlign" data-val="left" title="يسار">⇤</button>
+          </div>
+        </div>
+        <div class="nt-insp-row">
+          <label>لون النص</label>
+          <div class="nt-insp-swatches">
+            ${BRAND_COLOR_SWATCHES.map(c => `<button type="button" class="nt-swatch ${curColor === c ? 'is-on' : ''}" style="background:${c}" data-insp-swatch="color" data-val="${c}" title="${c}"></button>`).join('')}
+            <input type="color" value="${curColor}" data-insp-color="color" title="اختر أي لون">
+          </div>
+        </div>
+        <div class="nt-insp-row">
+          <label>لون الخلفية</label>
+          <div class="nt-insp-swatches">
+            <button type="button" class="nt-swatch is-clear" data-insp-swatch="backgroundColor" data-val="transparent" title="شفاف">∅</button>
+            ${BRAND_COLOR_SWATCHES.map(c => `<button type="button" class="nt-swatch ${curBg === c ? 'is-on' : ''}" style="background:${c}" data-insp-swatch="backgroundColor" data-val="${c}" title="${c}"></button>`).join('')}
+            <input type="color" value="${curBg}" data-insp-color="backgroundColor" title="اختر أي خلفية">
+          </div>
+        </div>
+        <div class="nt-insp-row">
+          <label>مساحة داخلية (<span id="nt-insp-pad-val">${padPx}px</span>)</label>
+          <input type="range" min="0" max="64" value="${padPx}" data-insp-style-range="padding" data-unit="px" data-val-out="#nt-insp-pad-val">
+        </div>
+        <div class="nt-insp-row">
+          <label>استدارة الحواف (<span id="nt-insp-rad-val">${radPx}px</span>)</label>
+          <input type="range" min="0" max="44" value="${radPx}" data-insp-style-range="borderRadius" data-unit="px" data-val-out="#nt-insp-rad-val">
+        </div>
+        <div class="nt-insp-row">
+          <label>الشفافية (<span id="nt-insp-op-val">${opPct}%</span>)</label>
+          <input type="range" min="15" max="100" value="${opPct}" data-insp-style-range="opacity" data-unit="%" data-scale="0.01" data-val-out="#nt-insp-op-val">
+        </div>
+        <div class="nt-insp-foot">
+          <button type="button" class="nt-insp-reset" data-insp-reset-style>↺ استعادة التنسيق الأصلي</button>
+        </div>
+      </div>
+
+      ${hasMedia ? `
+      <div class="nt-insp-body" data-insp-panel="media" ${tab === 'media' ? '' : 'hidden'}>
+        ${imgEl ? `
+          <div class="nt-insp-row">
+            <label>رابط الصورة الحالية</label>
+            <img class="nt-insp-thumb" src="${esc(imgEl.getAttribute('src') || '')}" alt="">
+            <input type="text" id="nt-insp-img-src" value="${esc(imgEl.getAttribute('src') || '')}" placeholder="assets/... أو https://...">
+            <label style="margin-top:6px">وصف الصورة (Alt)</label>
+            <input type="text" id="nt-insp-img-alt" value="${esc(imgEl.getAttribute('alt') || '')}" placeholder="وصف مختصر للصورة">
+            <div class="nt-insp-media-btns">
+              <input type="file" id="nt-insp-file" accept="image/*" hidden>
+              <button type="button" id="nt-insp-upload-btn">📤 رفع صورة من جهازك</button>
+              <button type="button" class="is-save" id="nt-insp-save-img">حفظ الصورة ✓</button>
+            </div>
+          </div>
+        ` : ''}
+        ${linkEl ? `
+          <div class="nt-insp-row">
+            <label>وجهة الرابط (URL)</label>
+            <input type="text" id="nt-insp-href" value="${esc(linkEl.getAttribute('href') || '')}" placeholder="#/nile-cruises أو https://...">
+            <select id="nt-insp-route-pick">
+              <option value="">— اختر صفحة جاهزة من الموقع —</option>
+              <option value="#/">الصفحة الرئيسية</option>
+              <option value="#/nile-cruises">صفحة النايل كروز</option>
+              <option value="#/dahabiyas">صفحة الدهبيات</option>
+              <option value="#/beyond-the-nile/nubian-and-the-nile">المزارات السياحية (Nubian & the Nile)</option>
+              <option value="#/journeys">برامج الرحلات</option>
+              <option value="#/plan-your-journey">خطط رحلتك (Plan Your Journey)</option>
+              <option value="#/nile-stories">القصص والمقالات</option>
+              <option value="#/about/our-story">من نحن</option>
+              <option value="#/contact">تواصل معنا</option>
+            </select>
+            <label class="nt-insp-chk"><input type="checkbox" id="nt-insp-blank" ${linkEl.getAttribute('target') === '_blank' ? 'checked' : ''}> فتح في نافذة جديدة</label>
+            <div class="nt-insp-media-btns">
+              <a class="nt-insp-open-url" href="${esc(linkEl.getAttribute('href') || '#/')}">↗ زيارة</a>
+              <button type="button" class="is-save" id="nt-insp-save-link">حفظ الرابط ✓</button>
+            </div>
+          </div>
+        ` : ''}
+      </div>` : ''}
+
+      <div class="nt-insp-body" data-insp-panel="insert" ${tab === 'insert' ? '' : 'hidden'}>
+        <div class="nt-insp-row">
+          <label>مكان الإدراج بالنسبة للعنصر المحدد</label>
+          <div class="nt-insp-pills">
+            <button type="button" class="is-on" data-insp-pos="after">⬇ بعد العنصر</button>
+            <button type="button" data-insp-pos="before">⬆ قبل العنصر</button>
+          </div>
+        </div>
+        <div class="nt-insp-blocks">
+          ${INSERT_BLOCK_PRESETS.map(b => `<button type="button" data-insp-insert="${b.key}"><span>${b.icon}</span><small>${b.label}</small></button>`).join('')}
+        </div>
+      </div>
+    `;
+
+    insp.hidden = false;
+    const inspBtn = document.getElementById('nt-el-insp-btn');
+    if (inspBtn) {
+      inspBtn.classList.add('is-active');
+      inspBtn.setAttribute('aria-pressed', 'true');
+    }
+    const bar = document.getElementById('nt-el-studio-bar');
+    positionElementInspector(insp, el, bar);
+
+    const commitStyle = async (stylesObj, reset = false) => {
+      const payload = getDomTargetPayload(el);
+      if (!payload) return;
+      captureStudioRestoreState(el, { openInspector: true, activeTab: 'style' });
+      await adm?.recordDomStyle?.({
+        regionKey: payload.regionKey,
+        targetSel: payload.targetSel,
+        styles: stylesObj,
+        reset
+      }, () => route({ preserveScroll: true }));
+    };
+
+    $$('[data-insp-tab]', insp).forEach(tb => {
+      tb.addEventListener('click', () => openElementInspector(el, tb.dataset.inspTab));
+    });
+    $('[data-insp-close]', insp)?.addEventListener('click', () => hideElementInspector());
+
+    $$('[data-insp-style-range]', insp).forEach(rng => {
+      const prop = rng.dataset.inspStyleRange;
+      const unit = rng.dataset.unit || '';
+      const scale = Number(rng.dataset.scale) || 1;
+      const outEl = $(rng.dataset.valOut, insp);
+      rng.addEventListener('input', () => {
+        const raw = Number(rng.value);
+        if (outEl) outEl.textContent = `${raw}${unit}`;
+        el.style[prop] = scale === 1 ? `${raw}${unit}` : String((raw * scale).toFixed(2));
+        showElementStudioFor(el, true);
+      });
+      rng.addEventListener('change', () => {
+        const raw = Number(rng.value);
+        const val = scale === 1 ? `${raw}${unit}` : String((raw * scale).toFixed(2));
+        commitStyle({ [prop]: val });
+      });
+    });
+
+    $$('[data-insp-style-btn]', insp).forEach(b => {
+      b.addEventListener('click', () => commitStyle({ [b.dataset.inspStyleBtn]: b.dataset.val }));
+    });
+    $$('[data-insp-swatch]', insp).forEach(sw => {
+      sw.addEventListener('click', () => commitStyle({ [sw.dataset.inspSwatch]: sw.dataset.val }));
+    });
+    $$('[data-insp-color]', insp).forEach(cp => {
+      cp.addEventListener('input', () => { el.style[cp.dataset.inspColor] = cp.value; });
+      cp.addEventListener('change', () => commitStyle({ [cp.dataset.inspColor]: cp.value }));
+    });
+    $('[data-insp-reset-style]', insp)?.addEventListener('click', () => commitStyle({}, true));
+
+    const routePick = $('#nt-insp-route-pick', insp);
+    if (routePick) {
+      routePick.addEventListener('change', () => {
+        if (routePick.value) $('#nt-insp-href', insp).value = routePick.value;
+      });
+    }
+    const uploadBtn = $('#nt-insp-upload-btn', insp);
+    const fileInput = $('#nt-insp-file', insp);
+    if (uploadBtn && fileInput) {
+      uploadBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', async () => {
+        const f = fileInput.files?.[0];
+        if (!f) return;
+        uploadBtn.disabled = true;
+        uploadBtn.textContent = '⏳ جاري الرفع...';
+        try {
+          const url = await adm?.uploadMediaFile?.(f);
+          if (url) {
+            $('#nt-insp-img-src', insp).value = url;
+            const thumb = $('.nt-insp-thumb', insp);
+            if (thumb) thumb.src = url;
+            $('#nt-insp-save-img', insp)?.click();
+          }
+        } catch (err) {
+          adm?.showToast?.(err.message || 'فشل رفع الصورة', 'error');
+        } finally {
+          uploadBtn.disabled = false;
+          uploadBtn.textContent = '📤 رفع صورة من جهازك';
+        }
+      });
+    }
+
+    $('#nt-insp-save-img', insp)?.addEventListener('click', async () => {
+      if (!imgEl) return;
+      const srcVal = $('#nt-insp-img-src', insp).value.trim();
+      const altVal = $('#nt-insp-img-alt', insp).value.trim();
+      if (!srcVal) return;
+      const payload = getDomTargetPayload(imgEl);
+      if (!payload) return;
+      captureStudioRestoreState(el, { openInspector: true, activeTab: 'media' });
+      await adm?.recordDomAttr?.({
+        regionKey: payload.regionKey,
+        targetSel: payload.targetSel,
+        attrs: { src: srcVal, alt: altVal },
+        toastMsg: 'تم تحديث الصورة بنجاح ✓'
+      }, () => route({ preserveScroll: true }));
+    });
+
+    $('#nt-insp-save-link', insp)?.addEventListener('click', async () => {
+      if (!linkEl) return;
+      const hrefVal = $('#nt-insp-href', insp).value.trim();
+      const blank = $('#nt-insp-blank', insp)?.checked;
+      const payload = getDomTargetPayload(linkEl);
+      if (!payload) return;
+      captureStudioRestoreState(el, { openInspector: true, activeTab: 'media' });
+      await adm?.recordDomAttr?.({
+        regionKey: payload.regionKey,
+        targetSel: payload.targetSel,
+        attrs: { href: hrefVal || '#/', target: blank ? '_blank' : '', rel: blank ? 'noopener noreferrer' : '' },
+        toastMsg: 'تم تحديث الرابط بنجاح ✓'
+      }, () => route({ preserveScroll: true }));
+    });
+
+    let insertPos = 'after';
+    $$('[data-insp-pos]', insp).forEach(pb => {
+      pb.addEventListener('click', () => {
+        insertPos = pb.dataset.inspPos;
+        $$('[data-insp-pos]', insp).forEach(x => x.classList.toggle('is-on', x === pb));
+      });
+    });
+
+    $$('[data-insp-insert]', insp).forEach(bi => {
+      bi.addEventListener('click', async () => {
+        const preset = INSERT_BLOCK_PRESETS.find(x => x.key === bi.dataset.inspInsert);
+        if (!preset) return;
+        const payload = getDomTargetPayload(el);
+        if (!payload) return;
+        await adm?.recordDomDuplicate?.({
+          regionKey: payload.regionKey,
+          targetSel: payload.targetSel,
+          parentSel: payload.parentSel,
+          position: insertPos,
+          kindLabel: preset.label,
+          cleanHtml: preset.html
+        }, (edit) => {
+          captureStudioRestoreState(el, { domId: edit?.newId || '', targetSel: edit?.newId ? JSON.stringify({ domId: edit.newId }) : '', openInspector: false });
+          route({ preserveScroll: true });
+        });
+      });
+    });
   }
 
   function ensureElementStudioBar() {
@@ -2627,21 +3174,32 @@
     bar = document.createElement('div');
     bar.id = 'nt-el-studio-bar';
     bar.className = 'nt-el-studio-bar';
+    bar.setAttribute('role', 'toolbar');
+    bar.setAttribute('aria-label', 'شريط تحرير العنصر المحدد');
     bar.dir = 'rtl';
     bar.hidden = true;
     bar.innerHTML = `
+      <span class="nt-el-pin" id="nt-el-pin-lbl">👁 معاينة</span>
       <span class="nt-el-kind" id="nt-el-kind-lbl">عنصر</span>
+      <button type="button" data-el-act="edit-text" id="nt-el-text-btn" title="تعديل النص مباشرة">✏️ نص</button>
+      <button type="button" data-el-act="edit-image" id="nt-el-img-btn" hidden title="تغيير أو رفع صورة">🖼 صورة</button>
+      <button type="button" data-el-act="edit-link" id="nt-el-link-btn" hidden title="تعديل الرابط">🔗 رابط</button>
+      <button type="button" data-el-act="inspect" id="nt-el-insp-btn" aria-pressed="false" title="تنسيق الألوان والخط وإضافة عناصر">🎨 تنسيق</button>
+      <button type="button" data-el-act="move-up" id="nt-el-up-btn" title="تحريك لأعلى/للخلف">▲</button>
+      <button type="button" data-el-act="move-down" id="nt-el-down-btn" title="تحريك لأسفل/للأمام">▼</button>
       <button type="button" data-el-act="list-item" id="nt-el-list-btn" hidden title="تحديد البطاقة الكاملة">⬆ البطاقة</button>
       <button type="button" data-el-act="parent" title="تحديد العنصر الأب">⬆ الأب</button>
       <button type="button" data-el-act="duplicate" title="إضافة عنصر جديد من نفس النوع">+ مثله</button>
+      <button type="button" data-el-act="toggle-hide" id="nt-el-hide-btn" title="إخفاء أو إظهار العنصر للزوار">👁</button>
       <button type="button" class="is-danger" data-el-act="delete" title="حذف هذا العنصر">🗑 حذف</button>
+      <button type="button" class="is-close" data-el-act="unlock" id="nt-el-close-btn" title="إلغاء التثبيت (Esc)" aria-label="إلغاء التحديد">✕</button>
     `;
     document.body.appendChild(bar);
 
     bar.addEventListener('mouseenter', () => clearTimeout(studioHoverTimer));
     bar.addEventListener('mouseleave', () => {
       if (!studioLocked) {
-        studioHoverTimer = setTimeout(hideElementStudioBar, 220);
+        studioHoverTimer = setTimeout(hideElementStudioBar, 260);
       }
     });
 
@@ -2653,10 +3211,17 @@
       const act = btn.dataset.elAct;
       const adm = window.NileTrailsAdmin;
 
+      if (act === 'unlock') {
+        hideElementStudioBar();
+        return;
+      }
+
       if (act === 'parent') {
         const up = getSemanticParent(studioTrackedEl);
         if (up && !up.matches(SHELL_PROTECTED_SEL) && $('#app')?.contains(up)) {
-          showElementStudioFor(up, studioLocked);
+          showElementStudioFor(up, true);
+          const insp = document.getElementById('nt-el-inspector');
+          if (insp && !insp.hidden) openElementInspector(up, insp.dataset.activeTab || 'style');
         } else {
           adm?.showToast?.('هذا أعلى عنصر قابل للتحديد', 'error');
         }
@@ -2665,13 +3230,82 @@
 
       if (act === 'list-item') {
         const card = studioTrackedEl.closest('[data-live-item]');
-        if (card) showElementStudioFor(card, studioLocked);
+        if (card) {
+          showElementStudioFor(card, true);
+          const insp = document.getElementById('nt-el-inspector');
+          if (insp && !insp.hidden) openElementInspector(card, insp.dataset.activeTab || 'style');
+        }
         return;
       }
 
       const target = studioTrackedEl;
       const elKind = inferElementKindLabel(target);
-      hideElementStudioBar();
+
+      if (act === 'edit-text') {
+        const tx = findPrimaryTextNode(target);
+        if (tx) {
+          showElementStudioFor(target, true);
+          startInlineTextEdit(tx, { pinStudio: true });
+        } else {
+          adm?.showToast?.('لا يوجد نص قابل للتحرير داخل هذا العنصر', 'error');
+        }
+        return;
+      }
+
+      if (act === 'edit-image' || act === 'edit-link') {
+        showElementStudioFor(target, true);
+        openElementInspector(target, 'media');
+        return;
+      }
+
+      if (act === 'inspect') {
+        showElementStudioFor(target, true);
+        const insp = document.getElementById('nt-el-inspector');
+        if (insp && !insp.hidden) hideElementInspector();
+        else openElementInspector(target, 'style');
+        return;
+      }
+
+      if (act === 'toggle-hide') {
+        const payload = getDomTargetPayload(target);
+        if (!payload) return;
+        const isHid = target.dataset.ntLiveHidden === '1' || target.style.display === 'none';
+        captureStudioRestoreState(target);
+        await adm?.recordDomStyle?.({
+          regionKey: payload.regionKey,
+          targetSel: payload.targetSel,
+          styles: { display: isHid ? '' : 'none' },
+          toastMsg: isHid ? 'تم إظهار العنصر للزوار ✓' : 'تم إخفاء العنصر عن الزوار ✓'
+        }, () => route({ preserveScroll: true }));
+        return;
+      }
+
+      if (act === 'move-up' || act === 'move-down') {
+        const delta = act === 'move-up' ? -1 : 1;
+        if (target.dataset?.liveList && target.dataset?.liveItem) {
+          const listPath = target.dataset.liveList;
+          const fb = getFallbackDataForElement(target);
+          await adm?.moveListItem?.(listPath, target.dataset.liveItem, delta, { kindLabel: elKind, fallbackData: fb }, (nextIdx) => {
+            captureStudioRestoreState(target, { listPath, listIdx: nextIdx });
+            route({ preserveScroll: true });
+          });
+        } else {
+          const payload = getDomTargetPayload(target);
+          if (!payload) return;
+          const res = await adm?.recordDomMove?.({
+            regionKey: payload.regionKey,
+            targetSel: payload.targetSel,
+            delta
+          });
+          if (res) {
+            const ops = CMS.getState()?.domEdits?.[payload.regionKey] || [];
+            const lastOp = ops[ops.length - 1];
+            captureStudioRestoreState(target, { movedOpId: lastOp?.id || '' });
+            route({ preserveScroll: true });
+          }
+        }
+        return;
+      }
 
       if (act === 'duplicate') {
         if (target.dataset?.liveList && target.dataset?.liveItem) {
@@ -2682,23 +3316,26 @@
             sampleItem: getSampleForListPath(target.dataset.liveList, target.dataset.liveFallback, target.dataset.liveBasePrice)
           }, () => route({ preserveScroll: true }));
         } else {
-          const reg = resolveDomRegionForEl(target);
-          const targetSel = JSON.stringify(buildDomDescriptor(target, reg.root));
-          const semP = getSemanticParent(target);
-          const parentSel = JSON.stringify(semP === reg.root ? { isRoot: true } : buildDomDescriptor(semP, reg.root));
+          const payload = getDomTargetPayload(target);
+          if (!payload) return;
           const cleanHtml = sanitizeElementTemplateHtml(target);
           await adm?.recordDomDuplicate?.({
-            regionKey: reg.key,
-            targetSel,
-            parentSel,
+            regionKey: payload.regionKey,
+            targetSel: payload.targetSel,
+            parentSel: payload.parentSel,
             kindLabel: elKind,
             cleanHtml
-          }, () => route({ preserveScroll: true }));
+          }, (edit) => {
+            if (edit?.newId) captureStudioRestoreState(target, { domId: edit.newId, targetSel: JSON.stringify({ domId: edit.newId }) });
+            route({ preserveScroll: true });
+          });
         }
         return;
       }
 
       if (act === 'delete') {
+        captureStudioRestoreState(null, { clear: true });
+        hideElementStudioBar();
         if (target.dataset?.liveList && target.dataset?.liveItem) {
           const fb = getFallbackDataForElement(target);
           const tpl = await adm?.deleteListItem?.(target.dataset.liveList, target.dataset.liveItem, {
@@ -2713,16 +3350,14 @@
             });
           }
         } else {
-          const reg = resolveDomRegionForEl(target);
-          const targetSel = JSON.stringify(buildDomDescriptor(target, reg.root));
-          const semP = getSemanticParent(target);
-          const parentSel = JSON.stringify(semP === reg.root ? { isRoot: true } : buildDomDescriptor(semP, reg.root));
+          const payload = getDomTargetPayload(target);
+          if (!payload) return;
           const cleanHtml = sanitizeElementTemplateHtml(target);
           const tpl = await adm?.recordDomDelete?.({
-            regionKey: reg.key,
+            regionKey: payload.regionKey,
             scope: getCurrentRouteScope(),
-            targetSel,
-            parentSel,
+            targetSel: payload.targetSel,
+            parentSel: payload.parentSel,
             kindLabel: elKind,
             tagName: target.tagName,
             previewText: target.textContent?.replace(/\s+/g, ' ').trim().slice(0, 56),
@@ -2745,6 +3380,8 @@
     clearTimeout(studioHoverTimer);
     if (studioTrackedEl && studioTrackedEl !== el) {
       studioTrackedEl.classList?.remove('nt-el-hover-target', 'nt-el-locked-target');
+      const insp = document.getElementById('nt-el-inspector');
+      if (insp && !insp.hidden && lockState) openElementInspector(el, insp.dataset.activeTab || 'style');
     }
     studioTrackedEl = el;
     studioLocked = Boolean(lockState);
@@ -2752,8 +3389,34 @@
     el.classList?.remove(studioLocked ? 'nt-el-hover-target' : 'nt-el-locked-target');
 
     const bar = ensureElementStudioBar();
+    bar.classList.toggle('is-locked', studioLocked);
+    const pinLbl = $('#nt-el-pin-lbl', bar);
+    if (pinLbl) pinLbl.textContent = studioLocked ? '📌 مثبّت' : '👁 معاينة';
+
     const kindLbl = $('#nt-el-kind-lbl', bar);
     if (kindLbl) kindLbl.textContent = inferElementKindLabel(el);
+
+    const imgBtn = $('#nt-el-img-btn', bar);
+    if (imgBtn) imgBtn.hidden = !findPrimaryImage(el);
+    const linkBtn = $('#nt-el-link-btn', bar);
+    if (linkBtn) linkBtn.hidden = !findPrimaryLink(el);
+    const textBtn = $('#nt-el-text-btn', bar);
+    if (textBtn) textBtn.hidden = !Boolean(el.textContent?.trim());
+
+    const hideBtn = $('#nt-el-hide-btn', bar);
+    if (hideBtn) {
+      const isHid = el.dataset.ntLiveHidden === '1' || el.style.display === 'none';
+      hideBtn.textContent = isHid ? '👁‍🗨' : '👁';
+      hideBtn.title = isHid ? 'إظهار العنصر للزوار' : 'إخفاء العنصر عن الزوار';
+    }
+
+    const semP = getSemanticParent(el);
+    const kids = semP ? getSemanticChildren(semP) : [];
+    const idx = kids.indexOf(el);
+    const upBtn = $('#nt-el-up-btn', bar);
+    const dnBtn = $('#nt-el-down-btn', bar);
+    if (upBtn) upBtn.disabled = idx <= 0;
+    if (dnBtn) dnBtn.disabled = idx < 0 || idx >= kids.length - 1;
 
     const listBtn = $('#nt-el-list-btn', bar);
     const listCard = el.closest('[data-live-item]');
@@ -2767,14 +3430,19 @@
     }
 
     bar.hidden = false;
-    const r = el.getBoundingClientRect();
-    const barW = bar.offsetWidth || 260;
-    const barH = bar.offsetHeight || 34;
-    const topPos = r.top >= barH + 10 ? r.top - barH - 4 : Math.min(window.innerHeight - barH - 8, r.bottom + 4);
-    const leftPos = Math.max(8, Math.min(window.innerWidth - barW - 8, r.right - barW));
-    bar.style.top = `${Math.max(6, topPos)}px`;
-    bar.style.left = `${leftPos}px`;
+    positionFloatingOverlay(bar, el.getBoundingClientRect(), {
+      preferAbove: true,
+      minTop: getLiveMinTop(el),
+      insideFallback: true
+    });
+
+    const insp = document.getElementById('nt-el-inspector');
+    if (insp && !insp.hidden) {
+      positionElementInspector(insp, el, bar);
+    }
   }
+
+  const SELECT_MODE_PASSTHROUGH_SEL = 'input, select, textarea, option, [data-scroll-to], [data-day-jump], [data-prog-switch], #nct-seg-season button, .sight-pill, #faq-toggle-all, summary, [data-save], .cabin-radio-card, .addon-select-card, button[type="submit"], [data-live-add-list], [data-live-edit-sec]';
 
   function initElementStudioEvents() {
     if (window._ntElStudioEventsBound) return;
@@ -2789,7 +3457,9 @@
       if (adm?.getPreviewDevice?.() !== 'desktop') return;
       const subMode = adm?.getSubMode ? adm.getSubMode() : 'select';
       if (subMode === 'browse' || studioLocked || document.activeElement?.isContentEditable) return;
-      if (e.target.closest?.('#nt-el-studio-bar')) {
+
+      const bar = document.getElementById('nt-el-studio-bar');
+      if (e.target.closest?.('#nt-el-studio-bar, #nt-el-inspector') || isPointInHoverBridge(e.clientX, e.clientY, studioTrackedEl, bar)) {
         clearTimeout(studioHoverTimer);
         return;
       }
@@ -2797,7 +3467,10 @@
       if (cand) {
         showElementStudioFor(cand, false);
       } else {
-        studioHoverTimer = setTimeout(hideElementStudioBar, 220);
+        clearTimeout(studioHoverTimer);
+        studioHoverTimer = setTimeout(() => {
+          if (!studioLocked) hideElementStudioBar();
+        }, 280);
       }
     }, { passive: true });
 
@@ -2805,26 +3478,82 @@
       if (!isLiveEdit() || getCurrentRouteScope().startsWith('admin')) return;
       const adm = window.NileTrailsAdmin;
       const subMode = adm?.getSubMode ? adm.getSubMode() : 'select';
-      if (subMode !== 'elements') return;
+      if (subMode === 'browse') return;
       if (e.target.closest?.(LIVE_CHROME_SEL) || e.target.closest?.('dialog, .adm-shell, #cms-toast')) return;
-      if (!$('#app')?.contains(e.target)) return;
+
+      if (!$('#app')?.contains(e.target)) {
+        if (studioLocked) hideElementStudioBar();
+        return;
+      }
+
       const cand = resolveEditableElement(e.target);
-      if (!cand) return;
+      if (subMode === 'select') {
+        if (e.target.closest?.('[data-live-text], [data-utx-key]')) return;
+        if (e.target.closest?.(SELECT_MODE_PASSTHROUGH_SEL)) return;
+        if (e.target.closest?.('header.site-header nav a') && !cand?.classList?.contains('button')) return;
+        if (!cand) {
+          if (studioLocked) hideElementStudioBar();
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        showElementStudioFor(cand, true);
+        return;
+      }
+
+      if (!cand) {
+        if (studioLocked) hideElementStudioBar();
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       showElementStudioFor(cand, true);
     }, true);
 
-    window.addEventListener('scroll', () => {
-      if (studioTrackedEl && !document.getElementById('nt-el-studio-bar')?.hidden) {
+    document.addEventListener('dblclick', (e) => {
+      if (!isLiveEdit() || getCurrentRouteScope().startsWith('admin')) return;
+      const adm = window.NileTrailsAdmin;
+      const subMode = adm?.getSubMode ? adm.getSubMode() : 'select';
+      if (subMode !== 'elements') return;
+      if (e.target.closest?.(LIVE_CHROME_SEL) || e.target.closest?.('dialog, .adm-shell, #cms-toast')) return;
+      const cand = resolveEditableElement(e.target);
+      if (!cand) return;
+      const tx = findPrimaryTextNode(cand);
+      if (tx) {
+        e.preventDefault();
+        e.stopPropagation();
+        showElementStudioFor(cand, true);
+        startInlineTextEdit(tx, { pinStudio: true });
+      }
+    }, true);
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && isLiveEdit()) {
+        const insp = document.getElementById('nt-el-inspector');
+        if (insp && !insp.hidden) {
+          hideElementInspector();
+          return;
+        }
+        if (studioLocked && !document.activeElement?.isContentEditable) {
+          hideElementStudioBar();
+        }
+      }
+    });
+
+    const syncTrackedPos = () => {
+      if (studioTrackedEl && studioTrackedEl.isConnected && !document.getElementById('nt-el-studio-bar')?.hidden) {
         showElementStudioFor(studioTrackedEl, studioLocked);
       }
-    }, { passive: true });
+    };
+    window.addEventListener('scroll', syncTrackedPos, { passive: true });
+    window.addEventListener('resize', syncTrackedPos, { passive: true });
   }
 
   function route(opts = {}) {
     const keepScroll = Boolean(opts && opts.preserveScroll);
     const savedY = keepScroll ? window.scrollY : 0;
+    const restoreReq = keepScroll ? pendingRestoreStudio : null;
+    pendingRestoreStudio = null;
     hideElementStudioBar();
     const st = CMS.getState();
     applyTheme(st);
@@ -2955,6 +3684,26 @@
     }
     bind();
     if (keepScroll) window.scrollTo(0, savedY);
+    if (restoreReq && isLiveEdit() && previewDev === 'desktop') {
+      let restoredEl = null;
+      const rRoot = resolveDomRegionRoot(restoreReq.regionKey);
+      if (restoreReq.domId && rRoot) {
+        restoredEl = rRoot.querySelector(`[data-nt-dom-id="${CSS.escape(restoreReq.domId)}"]`);
+      } else if (restoreReq.movedOpId && rRoot) {
+        restoredEl = rRoot.querySelector(`[data-nt-moved-op="${CSS.escape(restoreReq.movedOpId)}"]`);
+      } else if (restoreReq.listPath && Number.isInteger(restoreReq.listIdx)) {
+        const listEls = $$(`[data-live-list="${CSS.escape(restoreReq.listPath)}"][data-live-item]`, $('#app'));
+        restoredEl = listEls[restoreReq.listIdx] || null;
+      } else if (restoreReq.targetSel && rRoot) {
+        restoredEl = resolveDomTarget(rRoot, restoreReq.targetSel);
+      }
+      if (restoredEl && !restoredEl.matches?.(SHELL_PROTECTED_SEL)) {
+        showElementStudioFor(restoredEl, true);
+        if (restoreReq.openInspector) {
+          openElementInspector(restoredEl, restoreReq.activeTab || 'style');
+        }
+      }
+    }
   }
 
   function bindProgramBookingForm() {
