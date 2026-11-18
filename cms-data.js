@@ -1216,65 +1216,7 @@ window.NileTrailsCMS = (() => {
         ]
       }
     ],
-    enquiries: [
-      {
-        id: 'NT-2026-8419',
-        createdAt: '2026-11-08 14:30',
-        status: 'Confirmed',
-        vesselTitle: 'Luxury Nile Cruise (MS Sara / Oberoi Class)',
-        vesselSlug: 'luxury-nile-cruise-4-nights',
-        programTitle: '5 Days / 4 Nights — Luxor to Aswan Sailing Program',
-        programSlug: '4-nights-luxor-to-aswan',
-        cabinName: 'Double Cabin (Most Chosen by Couples)',
-        checkInDate: '2026-12-14',
-        dateFlexibility: 'Flexible (±3 days)',
-        adults: 2,
-        children: 0,
-        selectedAddons: [
-          { id: 'sight-abu-simbel', title: 'Sightseeing: Abu Simbel Temples (with Tour Guide)', price: 165 },
-          { id: 'sight-nubian-village', title: 'Sightseeing: Nubian Village (with Tour Guide)', price: 55 },
-          { id: 'addon-cairo-pyramids-3d', title: 'Cairo, Great Pyramids & Grand Egyptian Museum Program', price: 480 }
-        ],
-        estimatedTotal: 3500,
-        clientName: 'Charlotte & Oliver Vance',
-        clientEmail: 'charlotte.vance@example.co.uk',
-        clientPhone: '+44 7700 900412',
-        nationality: 'United Kingdom',
-        passportReady: 'Valid (>6 months)',
-        dietary: 'Gluten-Free (1 guest)',
-        occasion: 'Anniversary',
-        flightTransfer: 'Yes — Airport pickup & VIP Visa Assist requested',
-        notes: 'We would love an upper-deck double cabin and private Egyptologist for Abu Simbel and Nubian Village.'
-      },
-      {
-        id: 'NT-2026-8425',
-        createdAt: '2026-11-09 09:15',
-        status: 'New',
-        vesselTitle: 'Luxury Dahabiya Sailing',
-        vesselSlug: 'luxury-dahabiya-sailing',
-        programTitle: '4 Days / 3 Nights — Aswan to Luxor Sailing Program',
-        programSlug: '3-nights-aswan-to-luxor',
-        cabinName: 'Royal Panoramic Suite',
-        checkInDate: '2027-01-18',
-        dateFlexibility: 'Exact dates',
-        adults: 2,
-        children: 1,
-        selectedAddons: [
-          { id: 'sight-dandara-abydos', title: 'Sightseeing: Dandara & Abydos Temple (with Tour Guide)', price: 120 },
-          { id: 'addon-red-sea-4d', title: 'Red Sea Coastal Retreat (Hurghada / El Gouna Program)', price: 420 }
-        ],
-        estimatedTotal: 4965,
-        clientName: 'Dr. Lukas Weber',
-        clientEmail: 'l.weber@example.de',
-        clientPhone: '+49 151 23456789',
-        nationality: 'Germany',
-        passportReady: 'Valid (>6 months)',
-        dietary: 'No restrictions',
-        occasion: 'Family Holiday (German Guide)',
-        flightTransfer: 'Yes — Arriving via Lufthansa into Cairo / Luxor',
-        notes: 'Travelling with our 11-year-old son who is fascinated by ancient Egyptian hieroglyphs.'
-      }
-    ],
+    enquiries: [],
     staticPages: {
       'our-story': {
         title: 'Our Story',
@@ -1418,13 +1360,24 @@ window.NileTrailsCMS = (() => {
     });
   }
 
+  let authState = { checked: false, authenticated: false, isDefaultPassword: false };
+
+  function writePublicCache(targetState) {
+    try {
+      const publicCopy = { ...targetState, enquiries: [] };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(publicCopy));
+    } catch (e) {
+      console.warn('localStorage cache write failed:', e);
+    }
+  }
+
   function loadLocal() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.version === DEFAULT_DATA.version) {
-          state = { ...JSON.parse(JSON.stringify(DEFAULT_DATA)), ...parsed };
+          state = { ...JSON.parse(JSON.stringify(DEFAULT_DATA)), ...parsed, enquiries: [] };
           ensureRequiredCollections(state);
         }
       }
@@ -1433,23 +1386,74 @@ window.NileTrailsCMS = (() => {
     }
   }
 
+  async function checkAuth() {
+    try {
+      const res = await fetch('/api/auth/me', { credentials: 'same-origin', cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        authState = {
+          checked: true,
+          authenticated: Boolean(data.authenticated),
+          isDefaultPassword: Boolean(data.isDefaultPassword)
+        };
+        return authState;
+      }
+    } catch {}
+    authState = { checked: true, authenticated: false, isDefaultPassword: false };
+    return authState;
+  }
+
+  async function login(password) {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: String(password || '') })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.authenticated) {
+      return { ok: false, error: data.error || 'فشل تسجيل الدخول' };
+    }
+    authState = { checked: true, authenticated: true, isDefaultPassword: Boolean(data.isDefaultPassword) };
+    await syncFromServer();
+    return { ok: true, isDefaultPassword: authState.isDefaultPassword };
+  }
+
+  async function logout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    } catch {}
+    authState = { checked: true, authenticated: false, isDefaultPassword: false };
+    state.enquiries = [];
+    return true;
+  }
+
+  async function changePassword(currentPassword, newPassword) {
+    const res = await fetch('/api/auth/password', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword, newPassword })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: data.error || 'تعذر تغيير كلمة المرور' };
+    authState.isDefaultPassword = false;
+    return { ok: true };
+  }
+
   async function syncFromServer() {
     loadLocal();
+    await checkAuth();
     try {
-      const res = await fetch('/api/cms');
+      const res = await fetch('/api/cms', { credentials: 'same-origin', cache: 'no-store' });
       if (res.ok) {
         const serverData = await res.json();
         if (serverData && serverData.version === DEFAULT_DATA.version) {
           state = { ...JSON.parse(JSON.stringify(DEFAULT_DATA)), ...serverData };
           ensureRequiredCollections(state);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          writePublicCache(state);
           return state;
-        } else {
-          // Upgrade server to v3 schema
-          await saveToServer();
         }
-      } else if (res.status === 404) {
-        await saveToServer();
       }
     } catch (e) {
       // Offline / localStorage fallback
@@ -1458,54 +1462,88 @@ window.NileTrailsCMS = (() => {
   }
 
   let saveQueue = Promise.resolve();
-  function saveToServer() {
+  function saveToServer(opts = {}) {
     const payload = JSON.stringify(state);
-    try {
-      localStorage.setItem(STORAGE_KEY, payload);
-    } catch (e) {
-      console.warn('Saved to localStorage failed:', e);
-    }
-    saveQueue = saveQueue
-      .then(() =>
-        fetch('/api/cms', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: payload
-        })
-      )
-      .catch((e) => {
-        console.warn('Saved to localStorage (server sync skipped):', e);
+    writePublicCache(state);
+    const headers = { 'Content-Type': 'application/json' };
+    if (opts && opts.syncEnquiries) headers['X-NT-Sync-Enquiries'] = '1';
+
+    const runSave = saveQueue.then(async () => {
+      const res = await fetch('/api/cms', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers,
+        body: payload
       });
-    return saveQueue;
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          authState.authenticated = false;
+          throw new Error('انتهت جلسة المدير — يرجى تسجيل الدخول مجدداً');
+        }
+        throw new Error(errBody.error || `تعذر الحفظ على الخادم (${res.status})`);
+      }
+      return { ok: true };
+    });
+    saveQueue = runSave.catch(() => {});
+    return runSave;
   }
 
   async function submitEnquiry(enquiryObj) {
-    if (!Array.isArray(state.enquiries)) state.enquiries = [];
-    state.enquiries.unshift(enquiryObj);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     try {
-      await fetch('/api/enquiries', {
+      const res = await fetch('/api/enquiries', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(enquiryObj)
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        return { ok: false, error: data.error || 'Unable to submit reservation right now. Please try again or reach us on WhatsApp.' };
+      }
+      if (authState.authenticated) {
+        if (!Array.isArray(state.enquiries)) state.enquiries = [];
+        state.enquiries.unshift(data.enquiry || enquiryObj);
+      }
+      return { ok: true, enquiry: data.enquiry || enquiryObj };
     } catch (e) {
-      console.warn('Saved enquiry locally:', e);
+      return { ok: false, error: 'Connection interrupted while submitting your booking. Please try again or contact us directly via WhatsApp.' };
     }
-    return enquiryObj;
+  }
+
+  async function updateEnquiryStatus(id, status) {
+    const res = await fetch(`/api/enquiries/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'تعذر تحديث حالة الحجز');
+    }
+    const target = (state.enquiries || []).find(e => String(e.id) === String(id));
+    if (target) target.status = status;
+    return true;
+  }
+
+  async function deleteEnquiry(id) {
+    const res = await fetch(`/api/enquiries/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      credentials: 'same-origin'
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'تعذر حذف الحجز');
+    }
+    state.enquiries = (state.enquiries || []).filter(e => String(e.id) !== String(id));
+    return true;
   }
 
   async function resetToDefaults() {
     state = JSON.parse(JSON.stringify(DEFAULT_DATA));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    try {
-      await fetch('/api/cms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(state)
-      });
-    } catch (e) {}
-    return state;
+    writePublicCache(state);
+    return saveToServer({ syncEnquiries: false });
   }
 
   function getAvailableAddonsForProgram(currentProgramId, allowedIds = ['ALL']) {
@@ -1559,10 +1597,18 @@ window.NileTrailsCMS = (() => {
 
   return {
     getState: () => state,
-    setState: (newState) => { state = newState; return saveToServer(); },
+    setState: (newState, opts) => { state = newState; return saveToServer(opts); },
     save: saveToServer,
     sync: syncFromServer,
+    checkAuth,
+    login,
+    logout,
+    changePassword,
+    isAuthenticated: () => Boolean(authState.authenticated),
+    isDefaultPassword: () => Boolean(authState.isDefaultPassword),
     submitEnquiry,
+    updateEnquiryStatus,
+    deleteEnquiry,
     resetToDefaults,
     getAvailableAddonsForProgram,
     DEFAULT_DATA,

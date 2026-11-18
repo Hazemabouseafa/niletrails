@@ -530,10 +530,21 @@ window.NileTrailsAdmin = (() => {
   }
 
   async function finishSave(target, msg = 'تم الحفظ والمزامنة مع الموقع', beforeSnap = null) {
+    try {
+      await CMS.save();
+    } catch (err) {
+      if (beforeSnap) {
+        try {
+          const restored = JSON.parse(beforeSnap);
+          Object.assign(CMS.getState(), restored);
+        } catch {}
+      }
+      showToast(err?.message || 'تعذر الحفظ — تأكد من تسجيل الدخول', 'error');
+      return false;
+    }
     if (beforeSnap && beforeSnap !== captureSnapshot()) {
       pushUndoSnapshot(beforeSnap);
     }
-    await CMS.save();
     lastSavedTime = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
     showToast(msg);
     const pill = $('#adm-sync-status');
@@ -546,6 +557,7 @@ window.NileTrailsAdmin = (() => {
     } else if (target) {
       renderAdmin(target, { preserveScroll: true });
     }
+    return true;
   }
 
   async function saveAndRefresh(containerSelector, msg = 'تم الحفظ والمزامنة مع الموقع', beforeSnap = null) {
@@ -559,6 +571,7 @@ window.NileTrailsAdmin = (() => {
         try {
           const res = await fetch('/api/upload', {
             method: 'POST',
+            credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filename: file.name, dataBase64: reader.result })
           });
@@ -765,19 +778,31 @@ window.NileTrailsAdmin = (() => {
             ['all', `الكل (${allEnq.length})`],
             ['New', `جديد (${newCount})`],
             ['Confirmed', `مؤكد (${confirmedCount})`],
-            ['Completed', 'مكتمل']
+            ['Completed', 'مكتمل'],
+            ['Cancelled', 'ملغى']
           ].map(([k, lbl]) => `
             <button type="button" class="adm-chip ${bookingStatusFilter === k ? 'active' : ''}" data-book-filter="${k}">${lbl}</button>
           `).join('')}
         </div>
-        <div class="adm-search-box">
-          <input type="search" id="adm-global-search" value="${esc(searchQuery)}" placeholder="🔍 ابحث باسم العميل، الإيميل، الجنسية، أو الرحلة..." aria-label="بحث في الحجوزات">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div class="adm-search-box">
+            <input type="search" id="adm-global-search" value="${esc(searchQuery)}" placeholder="🔍 ابحث باسم العميل، الإيميل، الجنسية، أو الرحلة..." aria-label="بحث في الحجوزات">
+          </div>
+          ${allEnq.length ? '<button type="button" class="adm-btn-outline-sm" id="btn-export-bookings-csv">⬇ تصدير CSV</button>' : ''}
         </div>
       </div>
 
-      ${!filtered.length ? '<div class="adm-empty">لا توجد حجوزات مطابقة لعوامل التصفية الحالية.</div>' : `
+      ${!filtered.length ? '<div class="adm-empty">لا توجد حجوزات حتى الآن — ستظهر هنا كل طلبات العملاء الحقيقيين تلقائياً.</div>' : `
         <div class="adm-bookings-list">
-          ${filtered.map(enq => `
+          ${filtered.map(enq => {
+            const totalNum = typeof enq.estimatedTotal === 'number' ? enq.estimatedTotal : Number(enq.estimatedTotal);
+            const totalText = Number.isFinite(totalNum) && enq.estimatedTotal !== '' && enq.estimatedTotal !== null
+              ? `${cur}${totalNum.toLocaleString()}`
+              : esc(enq.estimatedTotal || 'طلب تسعير');
+            const cleanWa = String(enq.clientPhone || '').replace(/[^\d]/g, '');
+            const waMsg = encodeURIComponent(`Hello ${enq.clientName || ''}, thank you for contacting NileTrails regarding your booking request #${enq.id} (${enq.programTitle || enq.vesselTitle}).`);
+            const mailSub = encodeURIComponent(`NileTrails Booking Request #${enq.id} — ${enq.vesselTitle || 'Your Egypt Journey'}`);
+            return `
             <article class="adm-booking-card status-${esc((enq.status || 'New').toLowerCase())}">
               <div class="adm-bk-top">
                 <div>
@@ -786,10 +811,13 @@ window.NileTrailsAdmin = (() => {
                   <span class="adm-badge-status st-${esc((enq.status || 'New').toLowerCase())}">${esc(enq.status || 'New')}</span>
                 </div>
                 <div class="adm-bk-controls">
+                  ${cleanWa.length >= 7 ? `<a href="https://wa.me/${cleanWa}?text=${waMsg}" target="_blank" rel="noopener noreferrer" class="adm-btn-outline-sm" style="text-decoration:none">💬 واتساب</a>` : ''}
+                  ${enq.clientEmail ? `<a href="mailto:${esc(enq.clientEmail)}?subject=${mailSub}" class="adm-btn-outline-sm" style="text-decoration:none">✉ إيميل</a>` : ''}
                   <select class="adm-status-select" data-enq-status="${esc(enq.id)}" aria-label="تغيير حالة الطلب">
                     <option value="New" ${enq.status === 'New' ? 'selected' : ''}>New / طلب جديد</option>
                     <option value="Confirmed" ${enq.status === 'Confirmed' ? 'selected' : ''}>Confirmed / مؤكد</option>
                     <option value="Completed" ${enq.status === 'Completed' ? 'selected' : ''}>Completed / مكتمل</option>
+                    <option value="Cancelled" ${enq.status === 'Cancelled' ? 'selected' : ''}>Cancelled / ملغى</option>
                   </select>
                   <button type="button" class="adm-btn-danger-sm" data-delete-enq="${esc(enq.id)}">حذف</button>
                 </div>
@@ -798,27 +826,28 @@ window.NileTrailsAdmin = (() => {
               <div class="adm-bk-grid">
                 <div class="adm-bk-col">
                   <h4>بيانات العميل</h4>
-                  <p><strong>${esc(enq.clientName)}</strong> <small>(${esc(enq.nationality)})</small></p>
-                  <p dir="ltr" style="text-align:right">${esc(enq.clientEmail)} · ${esc(enq.clientPhone)}</p>
-                  <p><small>الجواز:</small> ${esc(enq.passportReady || 'ساري')} · <small>الطعام:</small> ${esc(enq.dietary || 'عادي')}</p>
+                  <p><strong>${esc(enq.clientName)}</strong> <small>(${esc(enq.nationality || '—')})</small></p>
+                  <p dir="ltr" style="text-align:right">${esc(enq.clientEmail)} · ${esc(enq.clientPhone || '—')}</p>
+                  <p><small>الجواز:</small> ${esc(enq.passportReady || '—')} · <small>الطعام:</small> ${esc(enq.dietary || '—')}</p>
                 </div>
                 <div class="adm-bk-col">
                   <h4>البرنامج والتفاصيل</h4>
                   <p><strong>${esc(enq.vesselTitle)}</strong> — ${esc(enq.programTitle)}</p>
-                  <p>الوصول: <strong>${esc(enq.checkInDate)}</strong> · ${esc(enq.cabinName)} (${enq.adults} بالغ${enq.children ? `, ${enq.children} طفل` : ''})</p>
+                  <p>الوصول: <strong>${esc(enq.checkInDate || 'Flexible')}</strong>${enq.season ? ` (${esc(enq.season)})` : ''} · ${esc(enq.cabinName || '—')} (${esc(enq.adults)} بالغ${enq.children ? `, ${enq.children} طفل` : ''})</p>
                   <p><small>الاستقبال:</small> ${esc(enq.flightTransfer || '—')}</p>
                 </div>
                 <div class="adm-bk-col adm-bk-addons">
                   <h4>المزارات والإضافات (${(enq.selectedAddons || []).length})</h4>
                   ${enq.selectedAddons?.length ? `
-                    <ul>${enq.selectedAddons.map(a => `<li>✓ ${esc(a.title)} (${cur}${a.price})</li>`).join('')}</ul>
+                    <ul>${enq.selectedAddons.map(a => `<li>✓ ${esc(a.title)}${Number(a.price) > 0 ? ` (${cur}${a.price})` : ''}</li>`).join('')}</ul>
                   ` : '<p class="muted">البرنامج القياسي فقط</p>'}
-                  <div class="adm-bk-total">الإجمالي التقديري: <strong>${cur}${(Number(enq.estimatedTotal) || 0).toLocaleString()}</strong></div>
+                  <div class="adm-bk-total">الإجمالي التقديري: <strong>${totalText}</strong></div>
                 </div>
               </div>
               ${enq.notes ? `<div class="adm-bk-notes">📝 ${esc(enq.notes)}</div>` : ''}
             </article>
-          `).join('')}
+          `;
+          }).join('')}
         </div>
       `}
     `;
@@ -1247,7 +1276,7 @@ window.NileTrailsAdmin = (() => {
           const fd = new FormData(e.target);
 
           pr.title = fd.get('title');
-          pr.slug = slugify(pr.title);
+          pr.slug = pr.slug || slugify(pr.title);
           pr.tabLabel = fd.get('tabLabel');
           pr.tabSub = fd.get('tabSub');
           pr.duration = fd.get('duration');
@@ -1787,11 +1816,13 @@ window.NileTrailsAdmin = (() => {
   };
 
   function isEditMode() {
+    if (!CMS.isAuthenticated()) return false;
     try { return sessionStorage.getItem(EDIT_MODE_KEY) === '1'; } catch { return false; }
   }
 
   function setEditMode(enabled) {
-    try { sessionStorage.setItem(EDIT_MODE_KEY, enabled ? '1' : '0'); } catch {}
+    const val = Boolean(enabled) && CMS.isAuthenticated();
+    try { sessionStorage.setItem(EDIT_MODE_KEY, val ? '1' : '0'); } catch {}
   }
 
   function getSubMode() {
@@ -2959,20 +2990,24 @@ window.NileTrailsAdmin = (() => {
           const fd = new FormData(e.target);
           if (isStory) {
             item.title = fd.get('title');
-            item.slug = slugify(item.title);
+            item.slug = item.slug || slugify(item.title);
             item.category = fd.get('meta1');
             item.date = fd.get('meta2');
             item.excerpt = fd.get('summary');
+            item.summary = fd.get('summary');
           } else if (collKey === 'destinations') {
             item.name = fd.get('title');
             item.role = fd.get('meta1');
+            item.subtitle = fd.get('meta1');
             item.desc = fd.get('summary');
           } else {
             item.name = fd.get('title');
-            item.slug = slugify(item.name);
+            item.slug = item.slug || slugify(item.name);
             item.duration = fd.get('meta1');
+            item.tag = fd.get('meta1');
             item.route = fd.get('meta2');
             item.sub = fd.get('summary');
+            item.summary = fd.get('summary');
           }
           item.image = fd.get('image');
           item.enabled = fd.get('enabled') === 'on';
@@ -2990,8 +3025,8 @@ window.NileTrailsAdmin = (() => {
     return `
       <div class="adm-section-head">
         <div>
-          <h2>إعدادات الموقع والنسخ الاحتياطي</h2>
-          <p>إدارة اسم العلامة التجارية، العملة، أرقام التواصل، وتصدير أو استيراد نسخة احتياطية كاملة بصيغة JSON.</p>
+          <h2>إعدادات الموقع والأمان والنسخ الاحتياطي</h2>
+          <p>إدارة اسم العلامة التجارية، العملة، أرقام التواصل وواتساب، كلمة مرور لوحة التحكم، والنسخ الاحتياطي.</p>
         </div>
       </div>
 
@@ -3004,35 +3039,103 @@ window.NileTrailsAdmin = (() => {
           <div class="adm-form-grid">
             <label>اسم الموقع <input type="text" name="brandName" value="${esc(s.brandName)}"></label>
             <label>الشعار <input type="text" name="tagline" value="${esc(s.tagline)}"></label>
-            <label>رمز العملة <input type="text" name="currencySymbol" value="${esc(s.currencySymbol || '$')}"></label>
+            <label>العملة (Code) <input type="text" name="currency" value="${esc(s.currency || 'USD')}" dir="ltr"></label>
+            <label>رمز العملة <input type="text" name="currencySymbol" value="${esc(s.currencySymbol || '$')}" dir="ltr"></label>
             <label>البريد الإلكتروني <input type="email" name="contactEmail" value="${esc(s.contactEmail)}" dir="ltr"></label>
-            <label>رقم الهاتف / واتساب <input type="text" name="contactPhone" value="${esc(s.contactPhone)}" dir="ltr"></label>
+            <label>رقم الهاتف <input type="text" name="contactPhone" value="${esc(s.contactPhone)}" dir="ltr"></label>
+            <label>رقم واتساب الرسمي (بالمفتاح الدولي) <input type="text" name="whatsapp" value="${esc(s.whatsapp || s.contactPhone || '')}" placeholder="+201005558899" dir="ltr"></label>
             <label>رابط فيديو يوتيوب (مصدر البرامج) <input type="text" name="youtubeHeroUrl" value="${esc(s.youtubeHeroUrl || '')}" dir="ltr"></label>
           </div>
           <label class="adm-switch" style="margin-top:16px">
             <input type="checkbox" name="showAdminBar" ${s.showAdminBar !== false ? 'checked' : ''}>
-            <span>إظهار شريط المدير السريع بالأسفل للوصول للوحة التحكم</span>
+            <span>إظهار شريط المدير السريع بالأسفل (يظهر للمدير فقط بعد تسجيل الدخول)</span>
           </label>
         </form>
 
-        <div class="adm-card">
-          <h3>النسخ الاحتياطي واستعادة النظام</h3>
-          <p class="adm-card-sub">احفظ ملف نسخة احتياطية من كافة البرامج والمزارات والأسئلة أو استرجع النظام لحالته الأصلية.</p>
-          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:20px">
-            <button type="button" class="adm-btn-primary" id="btn-export-cms">⬇ تصدير نسخة احتياطية (JSON)</button>
-            <label class="adm-btn-outline" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
-              <input type="file" id="inp-import-cms" accept="application/json,.json" hidden>
-              <span>⬆ استيراد نسخة (JSON)</span>
-            </label>
-            <button type="button" class="adm-btn-danger-sm" id="btn-reset-cms" style="padding:10px 18px">↺ استعادة الضبط الافتراضي للموقع</button>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <form id="adm-pw-form" class="adm-card">
+            <div class="adm-card-head">
+              <h3>🔐 أمان لوحة التحكم (تغيير كلمة المرور)</h3>
+              <button type="submit" class="adm-btn-primary">تحديث كلمة المرور</button>
+            </div>
+            <div class="adm-form-grid">
+              <label class="full-col">كلمة المرور الحالية * <input type="password" name="currentPassword" required autocomplete="current-password" dir="ltr"></label>
+              <label>كلمة المرور الجديدة (6 أحرف على الأقل) * <input type="password" name="newPassword" required minlength="6" autocomplete="new-password" dir="ltr"></label>
+              <label>تأكيد كلمة المرور الجديدة * <input type="password" name="confirmPassword" required minlength="6" autocomplete="new-password" dir="ltr"></label>
+            </div>
+          </form>
+
+          <div class="adm-card">
+            <h3>النسخ الاحتياطي واستعادة النظام</h3>
+            <p class="adm-card-sub">احفظ ملف نسخة احتياطية من كافة البرامج والمزارات والحجوزات أو استرجع النظام لحالته الأصلية.</p>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px">
+              <button type="button" class="adm-btn-primary" id="btn-export-cms">⬇ تصدير نسخة احتياطية (JSON)</button>
+              <label class="adm-btn-outline" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+                <input type="file" id="inp-import-cms" accept="application/json,.json" hidden>
+                <span>⬆ استيراد نسخة (JSON)</span>
+              </label>
+              <button type="button" class="adm-btn-danger-sm" id="btn-reset-cms" style="padding:10px 18px">↺ استعادة الضبط الافتراضي للموقع</button>
+            </div>
           </div>
         </div>
       </div>
     `;
   }
 
+  function renderAdminLogin(containerSelector) {
+    const container = $(containerSelector);
+    if (!container) return;
+    const brand = CMS.getState()?.settings?.brandName || 'NileTrails';
+    container.innerHTML = `
+      <div class="adm-login-screen" dir="rtl" lang="ar">
+        <div class="adm-login-card">
+          <div class="adm-login-brand">
+            <span class="adm-logo-badge">NT</span>
+            <div>
+              <h1>لوحة تحكم ${esc(brand)}</h1>
+              <p>تسجيل دخول الإدارة لإدارة الحجوزات والمحتوى المباشر</p>
+            </div>
+          </div>
+          <form id="adm-login-form" class="adm-login-form">
+            <label for="adm-password">كلمة مرور الإدارة</label>
+            <input type="password" id="adm-password" name="password" required autofocus autocomplete="current-password" placeholder="أدخل كلمة المرور..." dir="ltr">
+            <div id="adm-login-err" class="adm-login-err" role="alert" hidden></div>
+            <button type="submit" class="adm-btn-gold" id="adm-login-btn" style="width:100%;padding:12px;font-size:15px">تسجيل الدخول ↗</button>
+          </form>
+          <div class="adm-login-foot">
+            <a href="#/" class="adm-btn-outline-sm" style="text-decoration:none">← العودة إلى الموقع العام</a>
+          </div>
+        </div>
+      </div>
+    `;
+    const form = $('#adm-login-form', container);
+    const errEl = $('#adm-login-err', container);
+    const btn = $('#adm-login-btn', container);
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (errEl) errEl.hidden = true;
+      if (btn) btn.disabled = true;
+      const pw = $('#adm-password', form)?.value || '';
+      const res = await CMS.login(pw);
+      if (btn) btn.disabled = false;
+      if (!res.ok) {
+        if (errEl) {
+          errEl.textContent = res.error || 'كلمة المرور غير صحيحة';
+          errEl.hidden = false;
+        }
+        return;
+      }
+      showToast('مرحباً بك في لوحة التحكم ✓');
+      renderAdmin(containerSelector);
+    });
+  }
+
   // ==================== MAIN ADMIN RENDER SHELL ====================
   function renderAdmin(containerSelector = '#app', opts = {}) {
+    if (!CMS.isAuthenticated()) {
+      renderAdminLogin(containerSelector);
+      return;
+    }
     const st = CMS.getState();
     const container = $(containerSelector);
     if (!container) return;
@@ -3050,7 +3153,7 @@ window.NileTrailsAdmin = (() => {
       { id: 'faqs', icon: '❓', label: 'الأسئلة الشائعة (FAQ)', badge: st.faqs?.length || 0 },
       { id: 'pages', icon: '📄', label: 'بناء الصفحات المخصصة', badge: st.customPages?.length || 0 },
       { id: 'collections', icon: '🗺', label: 'الرحلات والوجهات والمقالات' },
-      { id: 'settings', icon: '⚙', label: 'الإعدادات والنسخ الاحتياطي' }
+      { id: 'settings', icon: '⚙', label: 'الإعدادات والأمان' }
     ];
 
     const currentNav = navGroups.find(n => n.id === activeTab) || navGroups[0];
@@ -3074,7 +3177,7 @@ window.NileTrailsAdmin = (() => {
             <span class="adm-logo-badge">NT</span>
             <div>
               <strong>لوحة تحكم NileTrails</strong>
-              <small>Atelier CMS · أسلوب UX الحديث</small>
+              <small>Atelier CMS · بوابة الإدارة الآمنة</small>
             </div>
           </div>
 
@@ -3088,8 +3191,9 @@ window.NileTrailsAdmin = (() => {
             `).join('')}
           </nav>
 
-          <div class="adm-sidebar-foot">
+          <div class="adm-sidebar-foot" style="display:flex;flex-direction:column;gap:8px">
             <a href="#/" class="adm-btn-gold" style="width:100%;text-align:center;text-decoration:none;display:block">العودة للموقع الحي ↗</a>
+            <button type="button" id="btn-adm-logout" class="adm-btn-outline-sm" style="width:100%;color:#fecaca;border-color:rgba(248,113,113,0.4)">🚪 تسجيل الخروج</button>
           </div>
         </aside>
 
@@ -3108,6 +3212,12 @@ window.NileTrailsAdmin = (() => {
           </header>
 
           <main class="adm-main-scroll">
+            ${CMS.isDefaultPassword() ? `
+              <div class="adm-security-notice">
+                <span>⚠️ تنبيه أمان: أنت تستخدم كلمة المرور الافتراضية حالياً. يُنصح بتغييرها قبل الإطلاق للعملاء.</span>
+                <button type="button" class="adm-btn-gold-sm" data-adm-tab="settings">تغيير كلمة المرور الآن</button>
+              </div>
+            ` : ''}
             ${bodyContent}
           </main>
         </div>
@@ -3150,7 +3260,14 @@ window.NileTrailsAdmin = (() => {
       });
     }
 
-    // Bookings filters & status updates
+    $('#btn-adm-logout')?.addEventListener('click', async () => {
+      setEditMode(false);
+      await CMS.logout();
+      showToast('تم تسجيل الخروج بنجاح');
+      renderAdmin(containerSelector);
+    });
+
+    // Bookings filters & status updates (dedicated server endpoints -> never collides with CMS saves)
     $$('[data-book-filter]').forEach(btn => {
       btn.addEventListener('click', () => {
         bookingStatusFilter = btn.dataset.bookFilter;
@@ -3158,25 +3275,51 @@ window.NileTrailsAdmin = (() => {
       });
     });
 
+    $('#btn-export-bookings-csv')?.addEventListener('click', () => {
+      const rows = (st.enquiries || []).map(e => [
+        e.id, e.createdAt, e.status, e.clientName, e.clientEmail, e.clientPhone, e.nationality,
+        e.vesselTitle, e.programTitle, e.checkInDate, e.season || '', e.cabinName, e.adults, e.children || 0,
+        e.estimatedTotal, (e.selectedAddons || []).map(a => a.title).join('; '), e.notes || ''
+      ]);
+      const header = ['Ref ID', 'Created', 'Status', 'Client Name', 'Email', 'Phone', 'Nationality', 'Vessel', 'Program', 'Check-in', 'Season', 'Cabin', 'Adults', 'Children', 'Total', 'Add-ons', 'Notes'];
+      const csvEsc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const csv = '\uFEFF' + [header, ...rows].map(r => r.map(csvEsc).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `niletrails-bookings-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      showToast('تم تصدير ملف الحجوزات (CSV) ✓');
+    });
+
     $$('[data-enq-status]').forEach(sel => {
       sel.addEventListener('change', async () => {
-        const item = st.enquiries.find(x => x.id === sel.dataset.enqStatus);
-        if (item) {
-          item.status = sel.value;
-          await saveAndRefresh(containerSelector, `تم تحديث حالة الطلب #${item.id}`);
+        const id = sel.dataset.enqStatus;
+        try {
+          await CMS.updateEnquiryStatus(id, sel.value);
+          showToast(`تم تحديث حالة الطلب #${id}`);
+          renderAdmin(containerSelector, { preserveScroll: true });
+        } catch (err) {
+          showToast(err.message || 'تعذر تحديث حالة الطلب', 'error');
         }
       });
     });
 
     $$('[data-delete-enq]').forEach(btn => {
       btn.addEventListener('click', async () => {
+        const id = btn.dataset.deleteEnq;
         const ok = await openConfirmDialog({
           title: 'حذف طلب الحجز',
-          message: `هل تريد حذف الحجز #${btn.dataset.deleteEnq} نهائياً؟ لا يمكن التراجع بعد الحذف.`
+          message: `هل تريد حذف الحجز #${id} نهائياً؟ لا يمكن التراجع بعد الحذف.`
         });
         if (!ok) return;
-        st.enquiries = st.enquiries.filter(x => x.id !== btn.dataset.deleteEnq);
-        await saveAndRefresh(containerSelector, 'تم حذف الطلب بنجاح');
+        try {
+          await CMS.deleteEnquiry(id);
+          showToast('تم حذف الطلب بنجاح');
+          renderAdmin(containerSelector, { preserveScroll: true });
+        } catch (err) {
+          showToast(err.message || 'تعذر حذف الطلب', 'error');
+        }
       });
     });
 
@@ -3197,7 +3340,7 @@ window.NileTrailsAdmin = (() => {
         const parsedBase = Number(fd.get('basePrice'));
         const cleanBase = Number.isFinite(parsedBase) && parsedBase >= 0 ? parsedBase : (Number(target.basePrice) || 890);
         target.title = fd.get('title');
-        target.slug = slugify(fd.get('title'));
+        target.slug = target.slug || slugify(fd.get('title'));
         target.tier = fd.get('tier');
         target.route = fd.get('route');
         target.nights = Number(fd.get('nights')) || 4;
@@ -3595,9 +3738,10 @@ window.NileTrailsAdmin = (() => {
 
     $('#btn-add-collection-item')?.addEventListener('click', async () => {
       const k = collectionSubTab;
-      if (k === 'stories') st.stories.unshift({ slug: 'story-' + Date.now(), title: 'New Nile Journal Story', category: 'Travel Tips', date: '2026', image: 'assets/egypt-temple.webp', excerpt: 'Discover timeless Egypt...', enabled: true, showOnHome: true });
-      else if (k === 'destinations') st.destinations.unshift({ slug: 'dest-' + Date.now(), name: 'New Region', role: 'EGYPTIAN HERITAGE', desc: 'Explore beyond the Nile...', image: 'assets/egypt-temple.webp', enabled: true, showOnHome: true });
-      else st.journeys.unshift({ slug: 'journey-' + Date.now(), name: 'New Egypt Package', duration: '8 Nights', route: 'Cairo · Nile', image: 'assets/nile-sailing.webp', sub: 'Signature tailored itinerary', enabled: true, showOnHome: true });
+      const uid = Date.now();
+      if (k === 'stories') st.stories.unshift({ id: 'story-' + uid, slug: 'story-' + uid, title: 'New Nile Journal Story', category: 'Nile Cruise Guide', date: String(new Date().getFullYear()), image: 'assets/egypt-temple.webp', excerpt: 'Discover timeless Egypt...', summary: 'Discover timeless Egypt...', enabled: true, showOnHome: true });
+      else if (k === 'destinations') st.destinations.unshift({ id: 'dest-' + uid, slug: 'dest-' + uid, name: 'New Region', role: 'EGYPTIAN HERITAGE', subtitle: 'EGYPTIAN HERITAGE', desc: 'Explore beyond the Nile...', image: 'assets/egypt-temple.webp', enabled: true, showOnHome: true });
+      else st.journeys.unshift({ id: 'journey-' + uid, slug: 'journey-' + uid, name: 'New Egypt Package', duration: '8 Nights', tag: '8 Nights', route: 'Cairo · Luxor · Aswan', image: 'assets/nile-sailing.webp', sub: 'Signature tailored itinerary', summary: 'Signature tailored itinerary', enabled: true, showOnHome: true });
       await saveAndRefresh(containerSelector, 'تم إضافة العنصر بنجاح');
       openCollectionDrawer(st, k, 0, containerSelector);
     });
@@ -3630,7 +3774,7 @@ window.NileTrailsAdmin = (() => {
       });
     });
 
-    // Global Settings + Import/Export/Reset
+    // Global Settings + Password Security + Import/Export/Reset
     $('#adm-settings-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
@@ -3638,13 +3782,34 @@ window.NileTrailsAdmin = (() => {
         ...st.settings,
         brandName: fd.get('brandName'),
         tagline: fd.get('tagline'),
-        currencySymbol: fd.get('currencySymbol'),
+        currency: fd.get('currency') || 'USD',
+        currencySymbol: fd.get('currencySymbol') || '$',
         contactEmail: fd.get('contactEmail'),
         contactPhone: fd.get('contactPhone'),
+        whatsapp: fd.get('whatsapp') || fd.get('contactPhone'),
         youtubeHeroUrl: fd.get('youtubeHeroUrl'),
         showAdminBar: fd.get('showAdminBar') === 'on'
       };
       await saveAndRefresh(containerSelector, 'تم حفظ الإعدادات العامة');
+    });
+
+    $('#adm-pw-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const cur = String(fd.get('currentPassword') || '');
+      const next = String(fd.get('newPassword') || '');
+      const conf = String(fd.get('confirmPassword') || '');
+      if (next !== conf) {
+        showToast('كلمتا المرور الجديدتان غير متطابقتين', 'error');
+        return;
+      }
+      const res = await CMS.changePassword(cur, next);
+      if (!res.ok) {
+        showToast(res.error || 'تعذر تغيير كلمة المرور', 'error');
+        return;
+      }
+      showToast('تم تحديث كلمة مرور الإدارة بنجاح 🔐');
+      renderAdmin(containerSelector);
     });
 
     $('#btn-export-cms')?.addEventListener('click', () => {
@@ -3663,7 +3828,7 @@ window.NileTrailsAdmin = (() => {
         const txt = await file.text();
         const parsed = JSON.parse(txt);
         if (!parsed || typeof parsed !== 'object') throw new Error('ملف JSON غير صالح');
-        await CMS.setState({ ...CMS.DEFAULT_DATA, ...parsed });
+        await CMS.setState({ ...CMS.DEFAULT_DATA, ...parsed }, { syncEnquiries: true });
         showToast('تم استيراد النسخة الاحتياطية وتطبيقها');
         renderAdmin(containerSelector);
       } catch (err) {
@@ -3687,6 +3852,7 @@ window.NileTrailsAdmin = (() => {
 
   return {
     renderAdmin,
+    isAuthed: () => CMS.isAuthenticated(),
     isEditMode,
     setEditMode,
     getSubMode,

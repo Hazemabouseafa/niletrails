@@ -44,8 +44,19 @@
     try { return new URLSearchParams(location.search).get('nt_preview') === '1'; } catch { return false; }
   }
 
+  function isAdminAuthed() {
+    return Boolean(window.NileTrailsAdmin?.isAuthed?.() || CMS.isAuthenticated?.());
+  }
+
   function isLiveEdit() {
-    return !isPreviewFrame() && Boolean(window.NileTrailsAdmin?.isEditMode?.());
+    return !isPreviewFrame() && isAdminAuthed() && Boolean(window.NileTrailsAdmin?.isEditMode?.());
+  }
+
+  function buildWhatsAppUrl(text = '') {
+    const s = CMS.getState()?.settings || {};
+    const digits = String(s.whatsapp || s.contactPhone || '').replace(/[^\d]/g, '');
+    if (digits.length < 7) return '';
+    return `https://wa.me/${digits}${text ? '?text=' + encodeURIComponent(text) : ''}`;
   }
 
   function liveTextAttr(path, isHtml = false) {
@@ -410,7 +421,7 @@
         </nav>
         <div class="nav-actions">
           ${live ? `<button type="button" class="nt-live-btn is-primary" data-live-edit-sec="header">✏ تعديل الهيدر</button>` : ''}
-          <a href="${p('admin')}" class="nav-admin-pill" title="Open Admin Control Panel">⚙ Admin CMS</a>
+          ${isAdminAuthed() ? `<a href="${p('admin')}" class="nav-admin-pill" title="Open Admin Control Panel">⚙ Admin CMS</a>` : ''}
           <a href="${p(secUrl)}" class="nav-contact" aria-label="${esc(secText)}"><nt-tx${liveTextAttr('settings.headerSecondaryText')}>${esc(secText)}</nt-tx></a>
           <a href="${p(priUrl)}" class="nav-plan"><nt-tx${liveTextAttr('settings.headerPrimaryText')}>${esc(priText)}</nt-tx> <span>↗</span></a>
           <button type="button" id="menu-toggle" class="menu-toggle" aria-label="Open navigation" aria-expanded="false">☰</button>
@@ -429,8 +440,10 @@
           `).join('')}
           <a class="mobile-contact" href="${p(secUrl)}">${esc(secText)} ↗</a>
           <a class="mobile-contact" href="${p(priUrl)}">${esc(priText)} ↗</a>
-          <a class="mobile-contact" href="${p('admin')}" style="background:var(--gold);color:#092434">⚙ لوحة التحكم (Admin Dashboard)</a>
-          <button type="button" class="mobile-contact" data-toggle-live-edit="${live ? 'false' : 'true'}" style="background:#183d52;color:#fff;border:0;width:100%;text-align:left">${live ? '✕ إيقاف التحرير المباشر' : '✏ تحرير الموقع مباشرة'}</button>
+          ${isAdminAuthed() ? `
+            <a class="mobile-contact" href="${p('admin')}" style="background:var(--gold);color:#092434">⚙ لوحة التحكم (Admin Dashboard)</a>
+            <button type="button" class="mobile-contact" data-toggle-live-edit="${live ? 'false' : 'true'}" style="background:#183d52;color:#fff;border:0;width:100%;text-align:left">${live ? '✕ إيقاف التحرير المباشر' : '✏ تحرير الموقع مباشرة'}</button>
+          ` : ''}
         </nav>
       </div>
     </header>`;
@@ -478,13 +491,14 @@
             <a href="${p('about')}">About Us</a>
             <a href="${p('travel-information')}">Travel Information</a>
             <a href="${p('contact')}">Contact</a>
-            <a href="${p('admin')}" style="color:#e2bd84;font-weight:700">⚙ Admin Control Panel (${bookingsCount})</a>
+            ${isAdminAuthed() ? `<a href="${p('admin')}" style="color:#e2bd84;font-weight:700">⚙ Admin Control Panel (${bookingsCount})</a>` : ''}
           </div>
           <div>
             <h4>START A CONVERSATION</h4>
             <p${liveTextAttr('settings.footerConvText')}>${esc(footerConv)}</p>
-            ${s.contactEmail ? `<p style="font-size:12px;color:#dfbc87;margin-bottom:6px">✉ ${esc(s.contactEmail)}</p>` : ''}
-            ${s.contactPhone ? `<p style="font-size:12px;color:#dfbc87;margin-bottom:8px">☎ ${esc(s.contactPhone)}</p>` : ''}
+            ${s.contactEmail ? `<p style="font-size:12px;color:#dfbc87;margin-bottom:6px"><a href="mailto:${esc(s.contactEmail)}" style="color:#dfbc87;text-decoration:none">✉ ${esc(s.contactEmail)}</a></p>` : ''}
+            ${s.contactPhone ? `<p style="font-size:12px;color:#dfbc87;margin-bottom:6px"><a href="tel:${esc(String(s.contactPhone).replace(/\s+/g, ''))}" style="color:#dfbc87;text-decoration:none">☎ ${esc(s.contactPhone)}</a></p>` : ''}
+            ${buildWhatsAppUrl('Hello NileTrails! I would like to enquire about a Nile cruise or Egypt journey.') ? `<p style="font-size:12px;color:#dfbc87;margin-bottom:8px"><a href="${esc(buildWhatsAppUrl('Hello NileTrails! I would like to enquire about a Nile cruise or Egypt journey.'))}" target="_blank" rel="noopener noreferrer" style="color:#dfbc87;text-decoration:none">💬 WhatsApp Concierge ↗</a></p>` : ''}
             ${(s.socialInstagram || s.socialFacebook) ? `
               <div style="display:flex;gap:12px;margin-bottom:10px;font-size:12px">
                 ${s.socialInstagram ? `<a href="${esc(s.socialInstagram)}" target="_blank" rel="noopener noreferrer" style="color:#dfbc87">Instagram ↗</a>` : ''}
@@ -499,7 +513,7 @@
           <span>
             <a href="${p('privacy-policy')}">Privacy</a>
             <a href="${p('terms-and-conditions')}">Terms</a>
-            <a href="${p('admin')}">Admin CMS</a>
+            <a href="${p('admin')}" style="opacity:0.55">Staff</a>
             <span class="footer-mark">MADE TO EXPLORE</span>
           </span>
         </div>
@@ -508,7 +522,7 @@
 
     return `
     ${liveSecWrap('footer', 'الفوتر ومعلومات التواصل والسوشيال', footerHtml)}
-    ${s.showAdminBar !== false && !isPreviewFrame() && !live ? `
+    ${isAdminAuthed() && s.showAdminBar !== false && !isPreviewFrame() && !live ? `
       <div class="floating-admin-bar" role="region" aria-label="Admin Quick Access">
         <button type="button" class="fab-edit-btn ${live ? 'active' : ''}" data-toggle-live-edit="${live ? 'false' : 'true'}">
           <span>${live ? '✕ إيقاف التحرير المباشر' : '✏ تحرير الموقع مباشرة'}</span>
@@ -923,7 +937,7 @@
     const isCruise = type === 'cruise';
     const list = isCruise ? (st.cruises || []) : (st.dahabiyas || []);
     const vessel = list.find(v => v.slug === slug);
-    if (!vessel) return notfound();
+    if (!vessel || (!isLiveEdit() && vessel.enabled === false)) return notfound();
 
     const back = isCruise ? 'nile-cruises' : 'dahabiyas';
     const programs = Array.isArray(vessel.programs) && vessel.programs.length ? vessel.programs : [];
@@ -1386,7 +1400,7 @@
 
               <!-- STEP 03: FOREIGN GUEST DETAILS -->
               <fieldset class="fb-fieldset">
-                <legend><span>03</span> International Traveller Details (بيانات العميل الأجنبي)</legend>
+                <legend><span>03</span> International Traveller Details</legend>
                 <div class="two-fields">
                   <div class="field-group">
                     <label for="bf-name">Full Name (as on Passport) *</label>
@@ -3565,6 +3579,11 @@
       if (window.NileTrailsAdmin) {
         document.title = 'Admin Dashboard | ' + (st.settings?.brandName || 'NileTrails');
         window.NileTrailsAdmin.renderAdmin('#app');
+        if (CMS.isAuthenticated()) {
+          CMS.sync().then(() => {
+            if (location.hash.startsWith('#/admin')) window.NileTrailsAdmin.renderAdmin('#app', { preserveScroll: true });
+          });
+        }
         return;
       }
     }
@@ -3583,7 +3602,7 @@
         title = 'Dahabiyas & Programs';
         break;
       case 'journeys': {
-        let j = (st.journeys || []).find(x => x.slug === seg[1]);
+        let j = (st.journeys || []).find(x => x.slug === seg[1] && (isLiveEdit() || x.enabled !== false));
         body = seg[1] ? (j ? journeyDetail(j) : notfound()) : journeyListing();
         title = j?.name || 'Journeys';
         break;
@@ -3593,14 +3612,14 @@
           body = nubianAndTheNilePage(seg[2] || '');
           title = seg[2] ? 'Sightseeing Excursion | Nubian and the Nile' : 'Nubian and the Nile — Main Places to Visit';
         } else {
-          let d = (st.destinations || []).find(x => x.slug === seg[1]);
+          let d = (st.destinations || []).find(x => x.slug === seg[1] && (isLiveEdit() || x.enabled !== false));
           body = seg[1] ? (d ? destinationDetail(d) : notfound()) : destinationsPage();
           title = d?.name || 'Beyond the Nile';
         }
         break;
       }
       case 'nile-stories': {
-        let s = (st.stories || []).find(x => x.slug === seg[1]);
+        let s = (st.stories || []).find(x => x.slug === seg[1] && (isLiveEdit() || x.enabled !== false));
         body = seg[1] ? (s ? storyDetail(s) : notfound()) : storyList();
         title = s?.title || 'Nile Stories';
         break;
@@ -3716,10 +3735,26 @@
     let lastGrandTotal = null;
 
     const dateInput = $('#bf-checkin', form);
-    if (dateInput && !dateInput.value) {
-      const d = new Date();
-      d.setDate(d.getDate() + 14);
-      dateInput.value = d.toISOString().split('T')[0];
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (dateInput) {
+      dateInput.min = todayStr;
+      if (!dateInput.value) {
+        const d = new Date();
+        d.setDate(d.getDate() + 14);
+        dateInput.value = d.toISOString().split('T')[0];
+      }
+      dateInput.addEventListener('change', () => {
+        const m = Number(String(dateInput.value || '').split('-')[1]);
+        if (!m) return;
+        const autoSeason = (m >= 5 && m <= 8) ? 'summer' : 'winter';
+        workspace.dataset.activeSeason = autoSeason;
+        $$('#nct-seg-season button').forEach(b => b.classList.toggle('on', b.dataset.season === autoSeason));
+        $$('.nct-pv').forEach(pv => {
+          const val = pv.getAttribute('data-' + autoSeason);
+          if (val) pv.textContent = val;
+        });
+        recalculateSummary(true);
+      });
     }
 
     function getSeasonRates(season) {
@@ -3760,11 +3795,20 @@
         card.classList.toggle('is-selected', cardKey === selectedKey);
       });
 
+      const checkedId = String(checkedCabin?.id || '').toLowerCase();
       const lowerCabin = cabinName.toLowerCase();
       let ratePerAdult = rates.doubleRate + cabinDelta;
-      if (lowerCabin.includes('triple')) ratePerAdult = rates.tripleRate;
-      else if (lowerCabin.includes('single')) ratePerAdult = rates.singleRate;
-      else if (lowerCabin.includes('double')) ratePerAdult = rates.doubleRate;
+      if (workspace.dataset.overrideCabin) {
+        if (lowerCabin.includes('triple')) ratePerAdult = rates.tripleRate;
+        else if (lowerCabin.includes('single')) ratePerAdult = rates.singleRate;
+        else if (lowerCabin.includes('double')) ratePerAdult = rates.doubleRate;
+      } else if (checkedId === 'cabin-triple-cabin' || (lowerCabin.includes('triple') && cabinDelta <= 0)) {
+        ratePerAdult = rates.tripleRate;
+      } else if (checkedId === 'cabin-single-cabin') {
+        ratePerAdult = rates.singleRate;
+      } else if (checkedId === 'cabin-double-cabin' && cabinDelta === 0) {
+        ratePerAdult = rates.doubleRate;
+      }
 
       const guestMultiplier = adults + (children * 0.5);
       const baseTotal = Math.round(ratePerAdult * guestMultiplier);
@@ -3862,7 +3906,7 @@
       }
       lastGrandTotal = grandTotal;
 
-      return { grandTotal, cabinName, adults, children, selectedAddons: allSelectedItems };
+      return { grandTotal, cabinName, adults, children, seasonFull, selectedAddons: allSelectedItems };
     }
 
     // Remove item directly from Sticky Card list
@@ -3956,6 +4000,7 @@
         programId: fd.get('programId'),
         programSlug: fd.get('programSlug'),
         programTitle: fd.get('programTitle'),
+        season: calc.seasonFull || '',
         cabinName: calc.cabinName,
         bedConfig: fd.get('bedConfig'),
         checkInDate: fd.get('checkInDate'),
@@ -3975,7 +4020,17 @@
         notes: fd.get('notes')
       };
 
-      await CMS.submitEnquiry(enquiryPayload);
+      const submitRes = await CMS.submitEnquiry(enquiryPayload);
+      if (!submitRes?.ok) {
+        if (submitBtn) submitBtn.disabled = false;
+        const waFallback = buildWhatsAppUrl(`Hello NileTrails, I would like to book ${enquiryPayload.vesselTitle} (${enquiryPayload.programTitle}) on ${enquiryPayload.checkInDate}. Name: ${enquiryPayload.clientName}`);
+        if (errBox) {
+          errBox.innerHTML = `${esc(submitRes?.error || 'Could not submit reservation right now.')}${waFallback ? ` <a href="${esc(waFallback)}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;font-weight:700">Message us on WhatsApp ↗</a>` : ''}`;
+        }
+        return;
+      }
+
+      const waConfirmUrl = buildWhatsAppUrl(`Hello NileTrails! I just submitted booking request #${refId} for ${enquiryPayload.vesselTitle} (${enquiryPayload.programTitle}), Check-in: ${enquiryPayload.checkInDate}, Party: ${calc.adults} Adults${calc.children ? `, ${calc.children} Children` : ''}, Est. Total: ${cur}${calc.grandTotal.toLocaleString()}.`);
 
       const successBox = $('#bf-success-box');
       form.hidden = true;
@@ -3986,7 +4041,7 @@
             <div class="bc-icon">✓</div>
             <span class="eyebrow"><span class="eyebrow-mark"></span>BOOKING REQUEST RECEIVED · REF #${esc(refId)}</span>
             <h3>Thank you, ${esc(enquiryPayload.clientName)}!</h3>
-            <p>Your reservation request for <strong>${esc(enquiryPayload.programTitle)}</strong> aboard <strong>${esc(enquiryPayload.vesselTitle)}</strong> has been registered in our concierge system.</p>
+            <p>Your reservation request for <strong>${esc(enquiryPayload.programTitle)}</strong> aboard <strong>${esc(enquiryPayload.vesselTitle)}</strong> has been registered with our concierge desk.</p>
             <div class="bc-summary-grid">
               <div><small>REFERENCE ID</small><strong>${esc(refId)}</strong></div>
               <div><small>CHECK-IN DATE</small><strong>${esc(enquiryPayload.checkInDate)} (${esc(enquiryPayload.dateFlexibility)})</strong></div>
@@ -3995,9 +4050,9 @@
               <div><small>SIGHTSEEING & ADD-ONS</small><strong>${calc.selectedAddons.length ? calc.selectedAddons.map(a => esc(a.title)).join(' + ') : 'Standard Program Sightseeing'}</strong></div>
               <div><small>ESTIMATED PACKAGE TOTAL</small><strong style="color:#a57a47;font-size:18px">${cur}${calc.grandTotal.toLocaleString()}</strong></div>
             </div>
-            <p style="font-size:13px;color:#5d727d">Our Egypt travel specialist will review your dates and send your formal confirmation dossier to <strong>${esc(enquiryPayload.clientEmail)}</strong> and WhatsApp <strong>${esc(enquiryPayload.clientPhone)}</strong>.</p>
+            <p style="font-size:13px;color:#5d727d">Our Egypt travel specialist will review availability and send your formal confirmation dossier to <strong>${esc(enquiryPayload.clientEmail)}</strong> and WhatsApp <strong>${esc(enquiryPayload.clientPhone)}</strong>.</p>
             <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:22px">
-              <a href="${p('admin')}" class="button btn-gold">View in Admin Dashboard <span>↗</span></a>
+              ${waConfirmUrl ? `<a href="${esc(waConfirmUrl)}" target="_blank" rel="noopener noreferrer" class="button btn-gold">Fast-Track via WhatsApp <span>↗</span></a>` : `<a href="${p('nile-cruises')}" class="button btn-gold">Explore More Cruises <span>↗</span></a>`}
               <button type="button" class="button btn-outline" id="bf-book-another">Modify / Submit Another Request</button>
             </div>
           </div>
@@ -4021,10 +4076,13 @@
     const primaryTitle = form.querySelector('input[name="primaryPlaceTitle"]')?.value || 'Sightseeing Tour';
 
     const dateIn = form.querySelector('input[name="checkInDate"]');
-    if (dateIn && !dateIn.value) {
-      const d = new Date();
-      d.setDate(d.getDate() + 10);
-      dateIn.value = d.toISOString().split('T')[0];
+    if (dateIn) {
+      dateIn.min = new Date().toISOString().split('T')[0];
+      if (!dateIn.value) {
+        const d = new Date();
+        d.setDate(d.getDate() + 10);
+        dateIn.value = d.toISOString().split('T')[0];
+      }
     }
 
     function updateSightTotal() {
@@ -4046,10 +4104,12 @@
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!form.reportValidity()) return;
+      const submitBtn = form.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
       const fd = new FormData(form);
       const calc = updateSightTotal();
       const refId = 'NT-SIGHT-' + Math.floor(1000 + Math.random() * 9000);
-      await CMS.submitEnquiry({
+      const submitRes = await CMS.submitEnquiry({
         id: refId,
         createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
         status: 'New',
@@ -4067,6 +4127,20 @@
         nationality: fd.get('nationality'),
         notes: fd.get('notes')
       });
+      if (!submitRes?.ok) {
+        if (submitBtn) submitBtn.disabled = false;
+        let errBox = $('#sight-error-msg', form);
+        if (!errBox) {
+          errBox = document.createElement('div');
+          errBox.id = 'sight-error-msg';
+          errBox.className = 'planner-error';
+          errBox.setAttribute('role', 'alert');
+          form.appendChild(errBox);
+        }
+        errBox.textContent = submitRes?.error || 'Could not submit reservation. Please try again.';
+        return;
+      }
+      const waUrl = buildWhatsAppUrl(`Hello NileTrails! Sightseeing booking #${refId} for ${primaryTitle} on ${fd.get('checkInDate')} (${calc.guests} guests, est. ${cur}${calc.total.toLocaleString()}).`);
       form.hidden = true;
       const sBox = $('#sight-booking-success');
       if (sBox) {
@@ -4076,10 +4150,10 @@
             <div class="bc-icon">✓</div>
             <span class="eyebrow"><span class="eyebrow-mark"></span>SIGHTSEEING RESERVATION RECEIVED · #${esc(refId)}</span>
             <h3>Thank you, ${esc(fd.get('clientName'))}!</h3>
-            <p>Your guided sightseeing reservation for <strong>${esc(primaryTitle)}</strong> has been saved. Estimated total: <strong>${cur}${calc.total.toLocaleString()}</strong>.</p>
-            <div style="display:flex;gap:12px;justify-content:center;margin-top:18px">
+            <p>Your guided sightseeing reservation for <strong>${esc(primaryTitle)}</strong> has been received. Our Egypt travel specialist will confirm your guide & pickup details shortly. Estimated total: <strong>${cur}${calc.total.toLocaleString()}</strong>.</p>
+            <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:18px">
+              ${waUrl ? `<a href="${esc(waUrl)}" target="_blank" rel="noopener noreferrer" class="button btn-gold">Fast-Track via WhatsApp ↗</a>` : ''}
               <a href="${p('beyond-the-nile/nubian-and-the-nile')}" class="button btn-outline">Explore More Sightseeing Places</a>
-              <a href="${p('admin')}" class="button btn-gold">View in Admin Dashboard ↗</a>
             </div>
           </div>
         `;
@@ -4439,7 +4513,13 @@
         let type = location.hash.startsWith('#/nile-cruises') ? 'cruise' : 'dahabiya';
         let xs = (type === 'cruise' ? st.cruises : st.dahabiyas).filter(x => x.enabled !== false);
         let cat = $('#filter-category').value, routeVal = $('#filter-route').value, night = $('#filter-duration').value, sort = $('#filter-sort').value;
-        xs = xs.filter(x => (!cat || x.tier.toLowerCase() === cat) && (!routeVal || x.route === routeVal) && (!night || String(x.nights) === night));
+        xs = xs.filter(x => {
+          const progs = Array.isArray(x.programs) ? x.programs : [];
+          const catOk = !cat || String(x.tier || '').toLowerCase() === cat;
+          const routeOk = !routeVal || x.route === routeVal || progs.some(pr => String(pr.route || '').includes(routeVal) || String(pr.tabSub || '').includes(routeVal));
+          const nightOk = !night || String(x.nights) === night || progs.some(pr => String(pr.nights) === night);
+          return catOk && routeOk && nightOk;
+        });
         if (sort === 'duration-asc') xs.sort((a, b) => a.nights - b.nights);
         if (sort === 'duration-desc') xs.sort((a, b) => b.nights - a.nights);
         const gridEl = $('#results-grid');
@@ -4504,11 +4584,13 @@
       form.onsubmit = async e => {
         e.preventDefault();
         if (!validateStep()) return;
+        const sendBtn = $('#plan-send', form);
+        if (sendBtn) sendBtn.disabled = true;
         const data = new FormData(form);
         const name = data.get('name');
         const pickedAddons = data.getAll('planAddons').map(t => ({ id: 'plan-addon', title: t, price: 0 }));
         const refId = 'NT-' + new Date().getFullYear() + '-' + Math.floor(1000 + Math.random() * 9000);
-        await CMS.submitEnquiry({
+        const submitRes = await CMS.submitEnquiry({
           id: refId,
           createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
           status: 'New',
@@ -4527,7 +4609,13 @@
           dietary: data.get('dietary') || 'None',
           notes: data.get('notes')
         });
-        form.innerHTML = `<div class="completion"><span>✓</span><h3>Your journey starts here, ${esc(name)}.</h3><p>Reference <strong>#${esc(refId)}</strong> has been saved to our concierge system. You can view it in the Admin Dashboard.</p>${button('Return to Home', '', 'btn-outline')}</div>`;
+        if (!submitRes?.ok) {
+          if (sendBtn) sendBtn.disabled = false;
+          $('#planner-error').textContent = submitRes?.error || 'Could not submit enquiry. Please try again.';
+          return;
+        }
+        const waUrl = buildWhatsAppUrl(`Hello NileTrails! I submitted a tailor-made journey request #${refId} (${name}).`);
+        form.innerHTML = `<div class="completion"><span>✓</span><h3>Your journey starts here, ${esc(name)}.</h3><p>Reference <strong>#${esc(refId)}</strong> has been received by our Egypt travel concierge. We will contact you shortly with a tailor-made proposal.</p><div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:16px">${waUrl ? `<a href="${esc(waUrl)}" target="_blank" rel="noopener noreferrer" class="button btn-gold">Chat on WhatsApp ↗</a>` : ''}${button('Return to Home', '', 'btn-outline')}</div></div>`;
       };
       paint();
     }
@@ -4537,9 +4625,11 @@
       contactForm.onsubmit = async e => {
         e.preventDefault();
         if (!contactForm.reportValidity()) return;
+        const submitBtn = contactForm.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.disabled = true;
         const fd = new FormData(contactForm);
         const refId = 'NT-MSG-' + Math.floor(1000 + Math.random() * 9000);
-        await CMS.submitEnquiry({
+        const submitRes = await CMS.submitEnquiry({
           id: refId,
           createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
           status: 'New',
@@ -4557,7 +4647,12 @@
           nationality: fd.get('nationality') || '-',
           notes: fd.get('message')
         });
-        $('#contact-feedback').textContent = `Thank you! Your enquiry (#${refId}) has been received and saved to the Admin Panel.`;
+        if (submitBtn) submitBtn.disabled = false;
+        if (!submitRes?.ok) {
+          $('#contact-feedback').textContent = submitRes?.error || 'Unable to send your message right now. Please try again.';
+          return;
+        }
+        $('#contact-feedback').textContent = `Thank you! Your enquiry (#${refId}) has been received by our NileTrails concierge team. We will reply shortly.`;
         contactForm.reset();
       };
     }

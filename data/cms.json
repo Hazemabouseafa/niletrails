@@ -36,7 +36,10 @@
     "theme": {
       "navy": "#0d2a3a",
       "gold": "#c7a36a",
-      "cream": "#fcfaf6"
+      "cream": "#fcfaf6",
+      "fontScale": 1,
+      "radius": 2,
+      "preset": "royal-navy"
     }
   },
   "homeConfig": {
@@ -125,6 +128,8 @@
     "storiesEyebrow": "FROM THE JOURNAL",
     "storiesTitle": "Stories worth <em>taking with you.</em>",
     "storiesSub": "Guides, ideas and inspiration for seeing Egypt with fresh eyes.",
+    "customPagesEyebrow": "CURATED COLLECTIONS",
+    "customPagesTitle": "Special <em>Pages & Collections.</em>",
     "closingEyebrow": "MADE FOR YOUR MOMENTS",
     "closingTitle": "Where will your<br><em>story take you?</em>",
     "closingBody": "Tell us the places you dream about. We will help design the journey that feels right for you.",
@@ -190,100 +195,6 @@
     ]
   },
   "cruises": [
-    {
-      "id": "vessel-1794320486453",
-      "slug": "new-luxury-nile-cruise",
-      "title": "New Luxury Nile Cruise",
-      "tier": "Luxury",
-      "route": "Luxor → Aswan",
-      "nights": 4,
-      "image": "assets/nile-cruise.webp",
-      "tag": "Bespoke Voyage",
-      "kind": "cruise",
-      "sub": "Tailored Nile sailing with curated programs and private guided excursions.",
-      "enabled": true,
-      "showOnHome": true,
-      "programs": [
-        {
-          "id": "custom-nile-cruise-271-prog-1",
-          "slug": "classic-program",
-          "title": "4-Night Classic Luxor to Aswan Program",
-          "badge": "Featured Program",
-          "duration": "5 Days / 4 Nights",
-          "nights": 4,
-          "route": "Luxor → Edfu → Kom Ombo → Aswan",
-          "departureDays": "Every Monday & Saturday",
-          "basePrice": 950,
-          "summary": "Full-board luxury cruise program with private Egyptologist guide and temple visits.",
-          "canBeAddonForOthers": false,
-          "allowedAddonIds": [
-            "ALL"
-          ],
-          "highlights": [
-            "Private airport transfers",
-            "Full-board gourmet dining",
-            "Guided temple excursions"
-          ],
-          "included": [
-            "4 nights accommodation onboard",
-            "All temple entry tickets",
-            "Private Egyptologist guide"
-          ],
-          "excluded": [
-            "International flights",
-            "Personal expenses"
-          ],
-          "cabins": [
-            {
-              "id": "deluxe",
-              "name": "Deluxe River-View Cabin",
-              "priceDelta": 0,
-              "desc": "Panoramic window"
-            },
-            {
-              "id": "suite",
-              "name": "Royal Suite",
-              "priceDelta": 400,
-              "desc": "Private balcony & lounge"
-            }
-          ],
-          "itinerary": [
-            {
-              "day": "Day 01",
-              "title": "Embarkation in Luxor & Karnak Temple",
-              "desc": "Transfer to vessel, welcome lunch and afternoon tour of Karnak and Luxor Temples."
-            },
-            {
-              "day": "Day 02",
-              "title": "Valley of the Kings & Sailing to Edfu",
-              "desc": "Explore the West Bank royal tombs before sailing south."
-            },
-            {
-              "day": "Day 03",
-              "title": "Edfu & Kom Ombo Temples",
-              "desc": "Visit Horus Temple at Edfu and sunset at Kom Ombo."
-            },
-            {
-              "day": "Day 04",
-              "title": "Aswan, Philae Island & Felucca Sail",
-              "desc": "Visit Philae Temple and sail by felucca around Elephantine Island."
-            },
-            {
-              "day": "Day 05",
-              "title": "Disembarkation in Aswan",
-              "desc": "Breakfast onboard and private transfer to airport or your chosen Add-on Program."
-            }
-          ],
-          "pricingSeasons": {
-            "summer": {
-              "double": 950
-            }
-          }
-        }
-      ],
-      "basePrice": 950,
-      "heroVideo": ""
-    },
     {
       "id": "cruise-1",
       "slug": "luxury-nile-cruise-4-nights",
@@ -795,67 +706,6 @@
               "title": "Disembarkation & Departure Transfer",
               "meals": "Breakfast",
               "desc": "Breakfast onboard, check-out at 08:00 AM and private transfer to the airport, train station, or your chosen extension program."
-            }
-          ]
-        },
-        {
-          "id": "prog-1794232361211",
-          "slug": "custom-program-4",
-          "title": "New 4-Night Tailored Sailing Program",
-          "badge": "New Program",
-          "duration": "5 Days / 4 Nights",
-          "nights": 4,
-          "route": "Luxor → Aswan",
-          "departureDays": "Flexible Departures",
-          "basePrice": 890,
-          "summary": "Complete sailing program with private guided excursions, temple entry tickets and airport transfers.",
-          "canBeAddonForOthers": false,
-          "allowedAddonIds": [
-            "ALL"
-          ],
-          "highlights": [
-            "Private airport transfers",
-            "Full-board dining",
-            "Certified Egyptologist guide"
-          ],
-          "included": [
-            "Full-board cabin accommodation",
-            "All listed temple visits & tickets",
-            "Private transfers"
-          ],
-          "excluded": [
-            "International flights",
-            "Gratuities"
-          ],
-          "cabins": [
-            {
-              "id": "deluxe",
-              "name": "Deluxe River-View Cabin",
-              "priceDelta": 0,
-              "desc": "Panoramic window"
-            },
-            {
-              "id": "suite",
-              "name": "Royal Suite",
-              "priceDelta": 380,
-              "desc": "Spacious suite"
-            }
-          ],
-          "itinerary": [
-            {
-              "day": "Day 01",
-              "title": "Embarkation & Welcome Temple Visit",
-              "desc": "Airport pickup, embarkation and guided afternoon temple visit."
-            },
-            {
-              "day": "Day 02",
-              "title": "Sailing the Nile & Ancient Monuments",
-              "desc": "Guided visit to the royal tombs and scenic river sailing."
-            },
-            {
-              "day": "Day 03",
-              "title": "Riverside Temples & Disembarkation",
-              "desc": "Final temple visit and private transfer to your next destination."
             }
           ]
         }
@@ -5681,143 +5531,7 @@
       ]
     }
   ],
-  "enquiries": [
-    {
-      "id": "NT-2026-2913",
-      "createdAt": "2026-11-10 14:20",
-      "status": "New",
-      "vesselTitle": "Custom Journey Planner (journey)",
-      "programTitle": "dsadsa (Flexible)",
-      "cabinName": "Luxury",
-      "checkInDate": "Flexible",
-      "adults": "2",
-      "children": 0,
-      "selectedAddons": [
-        {
-          "id": "plan-addon",
-          "title": "Bahariya Oasis & White Desert Luxury Camping Program",
-          "price": 0
-        }
-      ],
-      "estimatedTotal": "Custom Quote",
-      "clientName": "hazem",
-      "clientEmail": "hazem@hazem.my",
-      "clientPhone": "+1303030303",
-      "nationality": "United States",
-      "dietary": "No restrictions",
-      "notes": ""
-    },
-    {
-      "id": "NT-2026-2692",
-      "createdAt": "2026-11-10 14:14",
-      "status": "New",
-      "vesselSlug": "luxury-nile-cruise-4-nights",
-      "vesselTitle": "Luxury Nile Cruise (MS Sara / Oberoi Class)",
-      "programId": "luxury-nile-cruise-4-nights-prog-4n",
-      "programSlug": "4-nights-luxor-to-aswan",
-      "programTitle": "5 Days / 4 Nights — Luxor to Aswan Sailing Program",
-      "cabinName": "Double Cabin (Most Chosen by Couples)",
-      "bedConfig": "King / Double Bed",
-      "checkInDate": "2026-11-24",
-      "dateFlexibility": "Flexible (±3 days)",
-      "adults": 2,
-      "children": 0,
-      "selectedAddons": [
-        {
-          "id": "luxury-nile-cruise-4-nights-prog-7n",
-          "title": "8 Days / 7 Nights — Complete Round-Trip Nile Cruise Program (Luxury Nile Cruise (MS Sara / Oberoi Class))",
-          "price": 1690
-        }
-      ],
-      "estimatedTotal": 5480,
-      "clientName": "321321312321",
-      "clientEmail": "hazem@hazem.my",
-      "clientPhone": "+1 494949499",
-      "nationality": "United States",
-      "passportReady": "Valid Passport (>6 months)",
-      "dietary": "No restrictions",
-      "occasion": "English-Speaking Egyptologist Guide",
-      "flightTransfer": "Yes — Arrange complimentary private airport pickup",
-      "notes": "dsadasdsadsa"
-    },
-    {
-      "id": "NT-2026-8419",
-      "createdAt": "2026-11-08 14:30",
-      "status": "Confirmed",
-      "vesselTitle": "Luxury Nile Cruise (MS Sara / Oberoi Class)",
-      "vesselSlug": "luxury-nile-cruise-4-nights",
-      "programTitle": "5 Days / 4 Nights — Luxor to Aswan Sailing Program",
-      "programSlug": "4-nights-luxor-to-aswan",
-      "cabinName": "Double Cabin (Most Chosen by Couples)",
-      "checkInDate": "2026-12-14",
-      "dateFlexibility": "Flexible (±3 days)",
-      "adults": 2,
-      "children": 0,
-      "selectedAddons": [
-        {
-          "id": "sight-abu-simbel",
-          "title": "Sightseeing: Abu Simbel Temples (with Tour Guide)",
-          "price": 165
-        },
-        {
-          "id": "sight-nubian-village",
-          "title": "Sightseeing: Nubian Village (with Tour Guide)",
-          "price": 55
-        },
-        {
-          "id": "addon-cairo-pyramids-3d",
-          "title": "Cairo, Great Pyramids & Grand Egyptian Museum Program",
-          "price": 480
-        }
-      ],
-      "estimatedTotal": 3500,
-      "clientName": "Charlotte & Oliver Vance",
-      "clientEmail": "charlotte.vance@example.co.uk",
-      "clientPhone": "+44 7700 900412",
-      "nationality": "United Kingdom",
-      "passportReady": "Valid (>6 months)",
-      "dietary": "Gluten-Free (1 guest)",
-      "occasion": "Anniversary",
-      "flightTransfer": "Yes — Airport pickup & VIP Visa Assist requested",
-      "notes": "We would love an upper-deck double cabin and private Egyptologist for Abu Simbel and Nubian Village."
-    },
-    {
-      "id": "NT-2026-8425",
-      "createdAt": "2026-11-09 09:15",
-      "status": "New",
-      "vesselTitle": "Luxury Dahabiya Sailing",
-      "vesselSlug": "luxury-dahabiya-sailing",
-      "programTitle": "4 Days / 3 Nights — Aswan to Luxor Sailing Program",
-      "programSlug": "3-nights-aswan-to-luxor",
-      "cabinName": "Royal Panoramic Suite",
-      "checkInDate": "2027-01-18",
-      "dateFlexibility": "Exact dates",
-      "adults": 2,
-      "children": 1,
-      "selectedAddons": [
-        {
-          "id": "sight-dandara-abydos",
-          "title": "Sightseeing: Dandara & Abydos Temple (with Tour Guide)",
-          "price": 120
-        },
-        {
-          "id": "addon-red-sea-4d",
-          "title": "Red Sea Coastal Retreat (Hurghada / El Gouna Program)",
-          "price": 420
-        }
-      ],
-      "estimatedTotal": 4965,
-      "clientName": "Dr. Lukas Weber",
-      "clientEmail": "l.weber@example.de",
-      "clientPhone": "+49 151 23456789",
-      "nationality": "Germany",
-      "passportReady": "Valid (>6 months)",
-      "dietary": "No restrictions",
-      "occasion": "Family Holiday (German Guide)",
-      "flightTransfer": "Yes — Arriving via Lufthansa into Cairo / Luxor",
-      "notes": "Travelling with our 11-year-old son who is fascinated by ancient Egyptian hieroglyphs."
-    }
-  ],
+  "enquiries": [],
   "staticPages": {
     "our-story": {
       "title": "Our Story",
@@ -5972,5 +5686,8 @@
       "answer": "No immediate online charge is made. Submitting the booking form reserves your preferred program and selected add-ons in our system so our travel concierge can confirm exact cabin availability and issue your secure travel dossier.",
       "enabled": true
     }
-  ]
+  ],
+  "textOverrides": {},
+  "domEdits": {},
+  "deletedElementTypes": []
 }
