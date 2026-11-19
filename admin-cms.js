@@ -10,12 +10,35 @@ window.NileTrailsAdmin = (() => {
   let selectedVesselId = null;
   let editingPageId = null;
   let searchQuery = '';
+  let vesselFilterQuery = '';
   let bookingStatusFilter = 'all';
   let sightLocationFilter = 'all';
   let faqScopeFilter = 'all';
   let collectionSubTab = 'journeys';
   let lastSavedTime = '';
   let toastTimer = null;
+  let dismissedPwNotice = false;
+
+  const svgIc = (d, sz = 18) => `<svg class="adm-svg-ic" viewBox="0 0 24 24" width="${sz}" height="${sz}" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const ADM_ICONS = {
+    bookings: svgIc('<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>'),
+    homepage: svgIc('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>'),
+    sitebuilder: svgIc('<circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12.5" r="2.5"/><path d="M12 22a10 10 0 1 1 10-10c0 2.5-1.5 3.5-3 3.5h-2a2 2 0 0 0-2 2c0 1.5 1 2.5 0 4.5z"/>'),
+    cruises: svgIc('<path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1 .6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.9.94 5.34 2.81 7.76"/><path d="M19 13V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6"/><path d="M12 10V2"/>'),
+    sightseeing: svgIc('<path d="M3 21h18"/><path d="M5 21V10"/><path d="M19 21V10"/><path d="M9 21v-6h6v6"/><path d="M2 10l10-7 10 7"/>'),
+    addons: svgIc('<path d="M12 3l2.6 5.3L20 9.2l-4 3.9.9 5.5L12 16l-4.9 2.6.9-5.5-4-3.9 5.4-.9z"/>'),
+    faqs: svgIc('<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>'),
+    pages: svgIc('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/>'),
+    collections: svgIc('<polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>'),
+    settings: svgIc('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
+    sparkle: svgIc('<path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/>', 16),
+    menu: svgIc('<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>', 20),
+    search: svgIc('<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>', 16),
+    logout: svgIc('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>', 16),
+    edit: svgIc('<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>', 15),
+    external: svgIc('<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>', 15),
+    shield: svgIc('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>', 16)
+  };
 
   const PRESET_IMAGES = [
     ['Nile Sailing (Dahabiya)', 'assets/nile-sailing.webp'],
@@ -752,23 +775,57 @@ window.NileTrailsAdmin = (() => {
       return hay.includes(q);
     });
 
+    const vesselsCount = (st.cruises || []).length + (st.dahabiyas || []).length;
+    const extrasCount = (st.sightseeingPlaces || []).length + (st.addons || []).length;
+
     return `
+      <section class="adm-quick-launch" aria-label="إجراءات سريعة لإدارة الموقع">
+        <button type="button" class="adm-ql-card is-highlight" data-enable-live-edit="true">
+          <span class="adm-ql-ic">${ADM_ICONS.sparkle}</span>
+          <div>
+            <strong>التحرير المباشر للموقع</strong>
+            <small>عدّل أي نص أو صورة أو احذف وأضف عناصر مباشرة فوق الصفحات</small>
+          </div>
+        </button>
+        <button type="button" class="adm-ql-card" data-adm-tab="cruises">
+          <span class="adm-ql-ic">${ADM_ICONS.cruises}</span>
+          <div>
+            <strong>الكروزات والأسعار (${vesselsCount})</strong>
+            <small>تحديث أسعار المراكب والبرامج والرحلات اليومية والكبائن</small>
+          </div>
+        </button>
+        <button type="button" class="adm-ql-card" data-edit-live-sec="theme">
+          <span class="adm-ql-ic">${ADM_ICONS.sitebuilder}</span>
+          <div>
+            <strong>الهوية والألوان واللوجو</strong>
+            <small>تخصيص ألوان العلامة التجارية والخطوط والهيدر والفوتر</small>
+          </div>
+        </button>
+        <button type="button" class="adm-ql-card" data-adm-tab="settings">
+          <span class="adm-ql-ic">${ADM_ICONS.settings}</span>
+          <div>
+            <strong>بيانات التواصل وواتساب والأمان</strong>
+            <small>تعديل رقم الواتساب، البريد، العملة، وكلمة مرور الإدارة</small>
+          </div>
+        </button>
+      </section>
+
       <div class="adm-kpi-strip">
         <div class="adm-kpi-card">
-          <small>إجمالي الحجوزات</small>
+          <div class="adm-kpi-top"><small>إجمالي الحجوزات</small><span class="adm-kpi-ic">${ADM_ICONS.bookings}</span></div>
           <strong>${allEnq.length}</strong>
         </div>
         <div class="adm-kpi-card is-gold">
-          <small>طلبات جديدة بانتظار الرد</small>
+          <div class="adm-kpi-top"><small>طلبات جديدة بانتظار الرد</small><span class="adm-kpi-ic">${ADM_ICONS.sparkle}</span></div>
           <strong>${newCount}</strong>
         </div>
         <div class="adm-kpi-card is-green">
-          <small>حجوزات مؤكدة</small>
+          <div class="adm-kpi-top"><small>حجوزات مؤكدة</small><span class="adm-kpi-ic">${ADM_ICONS.shield}</span></div>
           <strong>${confirmedCount}</strong>
         </div>
         <div class="adm-kpi-card">
-          <small>إجمالي الفعاليات المضافة</small>
-          <strong>${(st.sightseeingPlaces || []).length + (st.addons || []).length}</strong>
+          <div class="adm-kpi-top"><small>المزارات والإضافات المفعّلة</small><span class="adm-kpi-ic">${ADM_ICONS.sightseeing}</span></div>
+          <strong>${extrasCount}</strong>
         </div>
       </div>
 
@@ -862,11 +919,16 @@ window.NileTrailsAdmin = (() => {
     const v = allVessels.find(x => x.id === selectedVesselId);
     const cur = st.settings?.currencySymbol || '$';
 
+    const vq = vesselFilterQuery.trim().toLowerCase();
+    const visibleVessels = vq
+      ? allVessels.filter(item => `${item.title} ${item.tier} ${item.route} ${item.kind}`.toLowerCase().includes(vq))
+      : allVessels;
+
     return `
       <div class="adm-section-head">
         <div>
           <h2>إدارة المراكب والذهبيات والبرامج</h2>
-          <p>عدّل بيانات أي مركب، فعّل ظهوره على الموقع، وأدر البرامج السياحية بجدول الأيام والكبائن التفاعلي (بدون أكواد معقدة).</p>
+          <p>اختر أي مركب من القائمة لتعديل بياناته وأسعاره وإدارة برامجه اليومية والكبائن بكل سهولة.</p>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button type="button" class="adm-btn-primary" id="btn-add-cruise">+ إضافة نايل كروز</button>
@@ -876,13 +938,16 @@ window.NileTrailsAdmin = (() => {
 
       <div class="adm-split-workspace">
         <aside class="adm-vessel-list">
-          <div class="adm-list-header">الأسطول (${allVessels.length})</div>
-          ${allVessels.map(item => `
+          <div class="adm-list-header">
+            <span>الأسطول (${allVessels.length})</span>
+            <input type="search" id="adm-vessel-filter" class="adm-list-search" value="${esc(vesselFilterQuery)}" placeholder="تصفية سريعة..." aria-label="تصفية المراكب">
+          </div>
+          ${visibleVessels.length ? visibleVessels.map(item => `
             <div class="adm-vessel-item ${item.id === v?.id ? 'active' : ''}" data-select-vessel="${esc(item.id)}">
               <img src="${esc(item.image || 'assets/nile-cruise.webp')}" alt="">
-              <div style="min-width:0;flex:1">
+              <div class="adm-vi-body">
                 <strong>${esc(item.title)}</strong>
-                <span>${item.kind === 'dahabiya' ? 'ذهبية' : 'كروز'} · ${esc(item.tier)} · ${(item.programs || []).length} برامج</span>
+                <span class="adm-vi-meta">${item.kind === 'dahabiya' ? 'ذهبية' : 'كروز'} · ${esc(item.tier)} · ${(item.programs || []).length} برامج</span>
                 <div class="adm-item-badges">
                   <em class="pill ${item.enabled !== false ? 'on' : 'off'}">${item.enabled !== false ? 'مفعّل' : 'مخفي'}</em>
                   <em class="pill price">من ${cur}${Number(item.basePrice) || Number(item.programs?.[0]?.basePrice) || 890} بدون إضافات</em>
@@ -890,7 +955,7 @@ window.NileTrailsAdmin = (() => {
                 </div>
               </div>
             </div>
-          `).join('')}
+          `).join('') : '<p style="padding:18px;text-align:center;font-size:13px;color:#64748b">لا توجد مراكب مطابقة للبحث.</p>'}
         </aside>
 
         <div class="adm-vessel-editor">
@@ -928,7 +993,7 @@ window.NileTrailsAdmin = (() => {
                 <div class="full-col adm-standalone-price-box">
                   <div class="adm-spb-head">
                     <label style="flex:1;min-width:220px">
-                      سعر ${v.kind === 'dahabiya' ? 'الذهبية' : 'الكروز'} لوحدها بدون أي إضافات (Add-ons) (${cur}) *
+                      سعر ${v.kind === 'dahabiya' ? 'الذهبية' : 'الكروز'} الأساسي بدون إضافات (${cur}) *
                       <input type="number" name="basePrice" value="${Number(v.basePrice) || Number(v.programs?.[0]?.basePrice) || 890}" min="0" step="1" required>
                     </label>
                     <label class="adm-switch" style="align-self:flex-end;padding-bottom:6px">
@@ -2776,7 +2841,7 @@ window.NileTrailsAdmin = (() => {
           <h2>التحكم الشامل بالهوية والقوائم والفوتر والصفحات</h2>
           <p>تحكم بالكامل في اللوجو، ألوان الموقع، قوائم الهيدر، الفوتر، وتعديل كل نصوص وصور الصفحات الثابتة — أو شغّل وضع التحرير المباشر فوق الموقع الحي!</p>
         </div>
-        <button type="button" class="adm-btn-gold" data-enable-live-edit="true">✏ فتح الموقع بوضع التحرير المباشر ↗</button>
+        <button type="button" class="adm-btn-gold" data-enable-live-edit="true">${ADM_ICONS.sparkle}<span>فتح الموقع بوضع التحرير المباشر</span></button>
       </div>
 
       <div class="adm-grid-2">
@@ -2786,7 +2851,7 @@ window.NileTrailsAdmin = (() => {
               <h3>الهيدر واللوجو والقائمة العلوية</h3>
               <p class="adm-card-sub">${esc(s.brandName)} · ${(s.hiddenNavKeys || []).length} قوائم مخفية · ${(s.customNavItems || []).length} روابط إضافية</p>
             </div>
-            <button type="button" class="adm-btn-gold-sm" data-edit-live-sec="header">✏ تعديل الهيدر والقوائم</button>
+            <button type="button" class="adm-btn-gold-sm" data-edit-live-sec="header">${ADM_ICONS.edit}<span>تعديل الهيدر والقوائم</span></button>
           </div>
           <div style="display:flex;align-items:center;gap:14px">
             <img src="${esc(s.brandLogo || 'assets/niletrails-logo.png')}" alt="Logo" style="height:44px;width:auto;background:#fcfaf6;padding:6px 10px;border-radius:4px;border:1px solid #dce2e8">
@@ -2800,9 +2865,9 @@ window.NileTrailsAdmin = (() => {
               <h3>الفوتر ومعلومات التواصل والسوشيال</h3>
               <p class="adm-card-sub">${esc(s.contactEmail)} · ${esc(s.contactPhone)}</p>
             </div>
-            <button type="button" class="adm-btn-gold-sm" data-edit-live-sec="footer">✏ تعديل الفوتر</button>
+            <button type="button" class="adm-btn-gold-sm" data-edit-live-sec="footer">${ADM_ICONS.edit}<span>تعديل الفوتر</span></button>
           </div>
-          <p style="margin:0;font-size:13px;color:#5c727e">${esc(s.footerAbout || '')}</p>
+          <p style="margin:0;font-size:13px;color:#5c727e;unicode-bidi:plaintext">${esc(s.footerAbout || '')}</p>
         </div>
 
         <div class="adm-card">
@@ -2811,7 +2876,7 @@ window.NileTrailsAdmin = (() => {
               <h3>ألوان وهوية الموقع (Theme Palette)</h3>
               <p class="adm-card-sub">تنعكس الألوان فوراً على الأزرار والعناوين والخلفيات</p>
             </div>
-            <button type="button" class="adm-btn-gold-sm" data-edit-live-sec="theme">🎨 تعديل الألوان</button>
+            <button type="button" class="adm-btn-gold-sm" data-edit-live-sec="theme">${ADM_ICONS.sitebuilder}<span>تعديل الألوان</span></button>
           </div>
           <div style="display:flex;gap:12px;flex-wrap:wrap">
             <span class="pill" style="background:${esc(th.navy)};color:#fff">Navy: ${esc(th.navy)}</span>
@@ -2827,11 +2892,11 @@ window.NileTrailsAdmin = (() => {
               <p class="adm-card-sub">تحرير نصوص وصور وفيديوهات صفحات: عن الشركة، الذهبية، السفر، التواصل، والسياسات</p>
             </div>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="adm-static-pages-grid">
             ${staticKeys.map(k => `
-              <button type="button" class="adm-btn-outline-sm" style="justify-content:space-between;display:flex;padding:9px 12px" data-edit-live-sec="static:${k}">
+              <button type="button" class="adm-static-page-btn" data-edit-live-sec="static:${k}">
                 <span>${STATIC_PAGE_LABELS[k]}</span>
-                <span>✏</span>
+                <span class="adm-sp-ic">${ADM_ICONS.edit}</span>
               </button>
             `).join('')}
           </div>
@@ -2851,7 +2916,7 @@ window.NileTrailsAdmin = (() => {
           <h2>تخطيط الصفحة الرئيسية (Home Appearance)</h2>
           <p>تحكم في الفيديو الافتتاحي الصامت، كل نصوص وصور الأقسام، وإظهار أو إخفاء أو إعادة ترتيب أي قسم.</p>
         </div>
-        <button type="button" class="adm-btn-gold" data-enable-live-edit="true">✏ فتح الموقع بوضع التحرير المباشر ↗</button>
+        <button type="button" class="adm-btn-gold" data-enable-live-edit="true">${ADM_ICONS.sparkle}<span>فتح الموقع بوضع التحرير المباشر</span></button>
       </div>
 
       <div class="adm-grid-2">
@@ -2875,18 +2940,18 @@ window.NileTrailsAdmin = (() => {
 
         <div class="adm-card">
           <h3>أقسام الصفحة الرئيسية (${sections.length} أقسام — تحكم كامل)</h3>
-          <p class="adm-card-sub" style="margin-bottom:14px">فعّل أو أخفِ أو رتّب أي قسم، واضغط ✏ لتعديل نصوصه وصوره بالكامل.</p>
+          <p class="adm-card-sub" style="margin-bottom:14px">فعّل أو أخفِ أو رتّب أي قسم، واضغط "تعديل" لتحديث نصوصه وصوره بالكامل.</p>
           <div class="adm-sections-sorter">
             ${sections.map((sec, idx) => `
               <div class="adm-sec-item ${sec.enabled === false ? 'off' : ''}">
-                <label class="adm-switch">
+                <label class="adm-switch adm-sec-label">
                   <input type="checkbox" data-toggle-section="${idx}" ${sec.enabled !== false ? 'checked' : ''}>
-                  <span><strong>${esc(sec.label)}</strong> <small dir="ltr">(${esc(sec.id)})</small></span>
+                  <span><strong>${esc(sec.label)}</strong> <small dir="ltr">${esc(sec.id)}</small></span>
                 </label>
-                <div style="display:flex;gap:6px;flex-wrap:wrap">
-                  ${sec.id !== 'customPagesHome' ? `<button type="button" class="adm-btn-gold-sm" data-edit-live-sec="${esc(sec.id)}">✏ تعديل</button>` : ''}
-                  <button type="button" class="adm-btn-outline-sm" data-move-section="${idx}:-1">↑</button>
-                  <button type="button" class="adm-btn-outline-sm" data-move-section="${idx}:1">↓</button>
+                <div class="adm-sec-actions">
+                  ${sec.id !== 'customPagesHome' ? `<button type="button" class="adm-btn-gold-sm" data-edit-live-sec="${esc(sec.id)}">تعديل</button>` : ''}
+                  <button type="button" class="adm-icon-btn" data-move-section="${idx}:-1" title="تحريك لأعلى" aria-label="تحريك لأعلى">↑</button>
+                  <button type="button" class="adm-icon-btn" data-move-section="${idx}:1" title="تحريك لأسفل" aria-label="تحريك لأسفل">↓</button>
                 </div>
               </div>
             `).join('')}
@@ -3038,13 +3103,13 @@ window.NileTrailsAdmin = (() => {
           </div>
           <div class="adm-form-grid">
             <label>اسم الموقع <input type="text" name="brandName" value="${esc(s.brandName)}"></label>
-            <label>الشعار <input type="text" name="tagline" value="${esc(s.tagline)}"></label>
             <label>العملة (Code) <input type="text" name="currency" value="${esc(s.currency || 'USD')}" dir="ltr"></label>
+            <label class="full-col">الشعار (Tagline) <input type="text" name="tagline" value="${esc(s.tagline)}"></label>
             <label>رمز العملة <input type="text" name="currencySymbol" value="${esc(s.currencySymbol || '$')}" dir="ltr"></label>
             <label>البريد الإلكتروني <input type="email" name="contactEmail" value="${esc(s.contactEmail)}" dir="ltr"></label>
             <label>رقم الهاتف <input type="text" name="contactPhone" value="${esc(s.contactPhone)}" dir="ltr"></label>
             <label>رقم واتساب الرسمي (بالمفتاح الدولي) <input type="text" name="whatsapp" value="${esc(s.whatsapp || s.contactPhone || '')}" placeholder="+201005558899" dir="ltr"></label>
-            <label>رابط فيديو يوتيوب (مصدر البرامج) <input type="text" name="youtubeHeroUrl" value="${esc(s.youtubeHeroUrl || '')}" dir="ltr"></label>
+            <label class="full-col">رابط فيديو يوتيوب (مصدر البرامج) <input type="text" name="youtubeHeroUrl" value="${esc(s.youtubeHeroUrl || '')}" dir="ltr"></label>
           </div>
           <label class="adm-switch" style="margin-top:16px">
             <input type="checkbox" name="showAdminBar" ${s.showAdminBar !== false ? 'checked' : ''}>
@@ -3055,7 +3120,7 @@ window.NileTrailsAdmin = (() => {
         <div style="display:flex;flex-direction:column;gap:16px">
           <form id="adm-pw-form" class="adm-card">
             <div class="adm-card-head">
-              <h3>🔐 أمان لوحة التحكم (تغيير كلمة المرور)</h3>
+              <h3>${ADM_ICONS.shield}<span>أمان لوحة التحكم (تغيير كلمة المرور)</span></h3>
               <button type="submit" class="adm-btn-primary">تحديث كلمة المرور</button>
             </div>
             <div class="adm-form-grid">
@@ -3131,6 +3196,34 @@ window.NileTrailsAdmin = (() => {
   }
 
   // ==================== MAIN ADMIN RENDER SHELL ====================
+  function buildQuickJumpIndex(st) {
+    const items = [
+      { label: 'التحرير المباشر فوق الموقع (نصوص، صور، حذف وإضافة)', hint: 'إجراء سريع', act: 'live' },
+      { label: 'الحجوزات وطلبات العملاء', hint: 'قسم', act: 'tab', val: 'bookings' },
+      { label: 'الكروزات والذهبيات وتعديل الأسعار', hint: 'قسم', act: 'tab', val: 'cruises' },
+      { label: 'المزارات السياحية (Nubian & the Nile)', hint: 'قسم', act: 'tab', val: 'sightseeing' },
+      { label: 'الإضافات والخدمات (Add-ons)', hint: 'قسم', act: 'tab', val: 'addons' },
+      { label: 'الصفحة الرئيسية وفيديو البداية', hint: 'قسم', act: 'tab', val: 'homepage' },
+      { label: 'تغيير الألوان والهوية (Theme Palette)', hint: 'تصميم', act: 'sec', val: 'theme' },
+      { label: 'تعديل الهيدر واللوجو والقائمة العلوية', hint: 'تصميم', act: 'sec', val: 'header' },
+      { label: 'تعديل الفوتر ومعلومات التواصل', hint: 'تصميم', act: 'sec', val: 'footer' },
+      { label: 'الأسئلة الشائعة (FAQ)', hint: 'قسم', act: 'tab', val: 'faqs' },
+      { label: 'بناء الصفحات المخصصة', hint: 'قسم', act: 'tab', val: 'pages' },
+      { label: 'الرحلات والوجهات والمقالات', hint: 'قسم', act: 'tab', val: 'collections' },
+      { label: 'الإعدادات، واتساب، العملة، وكلمة المرور', hint: 'النظام', act: 'tab', val: 'settings' }
+    ];
+    [...(st.cruises || []), ...(st.dahabiyas || [])].forEach(v => {
+      items.push({ label: `${v.title} (${v.kind === 'dahabiya' ? 'ذهبية' : 'كروز'})`, hint: 'مركب', act: 'vessel', val: v.id });
+    });
+    (st.sightseeingPlaces || []).forEach((pl, idx) => {
+      items.push({ label: pl.title, hint: 'مزار', act: 'sight', val: String(idx) });
+    });
+    Object.entries(STATIC_PAGE_LABELS).forEach(([k, lbl]) => {
+      items.push({ label: lbl, hint: 'صفحة ثابتة', act: 'sec', val: 'static:' + k });
+    });
+    return items;
+  }
+
   function renderAdmin(containerSelector = '#app', opts = {}) {
     if (!CMS.isAuthenticated()) {
       renderAdminLogin(containerSelector);
@@ -3142,21 +3235,43 @@ window.NileTrailsAdmin = (() => {
 
     const prevScroll = opts.preserveScroll ? ($('.adm-main-scroll')?.scrollTop || window.scrollY) : 0;
     const newEnqCount = (st.enquiries || []).filter(e => e.status === 'New').length;
+    const fleetCount = (st.cruises?.length || 0) + (st.dahabiyas?.length || 0);
 
-    const navGroups = [
-      { id: 'bookings', icon: '📥', label: 'الحجوزات والطلبات', badge: newEnqCount },
-      { id: 'homepage', icon: '🎨', label: 'الصفحة الرئيسية والأقسام' },
-      { id: 'sitebuilder', icon: '🧩', label: 'الهوية والقوائم والفوتر والصفحات' },
-      { id: 'cruises', icon: '🚢', label: 'الكروزات والذهبيات والبرامج', badge: (st.cruises?.length || 0) + (st.dahabiyas?.length || 0) },
-      { id: 'sightseeing', icon: '🏛', label: 'المزارات السياحية', badge: st.sightseeingPlaces?.length || 0 },
-      { id: 'addons', icon: '✦', label: 'الإضافات (Add-ons)', badge: st.addons?.length || 0 },
-      { id: 'faqs', icon: '❓', label: 'الأسئلة الشائعة (FAQ)', badge: st.faqs?.length || 0 },
-      { id: 'pages', icon: '📄', label: 'بناء الصفحات المخصصة', badge: st.customPages?.length || 0 },
-      { id: 'collections', icon: '🗺', label: 'الرحلات والوجهات والمقالات' },
-      { id: 'settings', icon: '⚙', label: 'الإعدادات والأمان' }
+    const navSections = [
+      {
+        title: 'المركز الرئيسي',
+        items: [
+          { id: 'bookings', icon: ADM_ICONS.bookings, label: 'الحجوزات والطلبات', badge: newEnqCount }
+        ]
+      },
+      {
+        title: 'الأسطول والرحلات',
+        items: [
+          { id: 'cruises', icon: ADM_ICONS.cruises, label: 'الكروزات والذهبيات', badge: fleetCount },
+          { id: 'sightseeing', icon: ADM_ICONS.sightseeing, label: 'المزارات السياحية', badge: st.sightseeingPlaces?.length || 0 },
+          { id: 'addons', icon: ADM_ICONS.addons, label: 'الإضافات (Add-ons)', badge: st.addons?.length || 0 },
+          { id: 'collections', icon: ADM_ICONS.collections, label: 'الرحلات والوجهات والمقالات' }
+        ]
+      },
+      {
+        title: 'تصميم ومحتوى الموقع',
+        items: [
+          { id: 'homepage', icon: ADM_ICONS.homepage, label: 'الصفحة الرئيسية والأقسام' },
+          { id: 'sitebuilder', icon: ADM_ICONS.sitebuilder, label: 'الهوية والقوائم والفوتر' },
+          { id: 'faqs', icon: ADM_ICONS.faqs, label: 'الأسئلة الشائعة (FAQ)', badge: st.faqs?.length || 0 },
+          { id: 'pages', icon: ADM_ICONS.pages, label: 'الصفحات المخصصة', badge: st.customPages?.length || 0 }
+        ]
+      },
+      {
+        title: 'النظام',
+        items: [
+          { id: 'settings', icon: ADM_ICONS.settings, label: 'الإعدادات والأمان' }
+        ]
+      }
     ];
 
-    const currentNav = navGroups.find(n => n.id === activeTab) || navGroups[0];
+    const flatNav = navSections.flatMap(sec => sec.items);
+    const currentNav = flatNav.find(n => n.id === activeTab) || flatNav[0];
 
     let bodyContent = '';
     if (activeTab === 'bookings') bodyContent = renderBookingsTab(st);
@@ -3172,50 +3287,79 @@ window.NileTrailsAdmin = (() => {
 
     container.innerHTML = `
       <div class="adm-shell-v2" dir="rtl" lang="ar">
-        <aside class="adm-sidebar" aria-label="قائمة لوحة التحكم">
+        <div class="adm-nav-backdrop" id="adm-nav-backdrop" hidden></div>
+        <aside class="adm-sidebar" id="adm-sidebar" aria-label="قائمة لوحة التحكم">
           <div class="adm-sidebar-brand">
             <span class="adm-logo-badge">NT</span>
-            <div>
-              <strong>لوحة تحكم NileTrails</strong>
-              <small>Atelier CMS · بوابة الإدارة الآمنة</small>
+            <div style="flex:1;min-width:0">
+              <strong>لوحة تحكم ${esc(st.settings?.brandName || 'NileTrails')}</strong>
+              <small>Atelier CMS · إدارة سهلة ومباشرة</small>
             </div>
+            <button type="button" class="adm-sidebar-close" id="adm-sidebar-close" aria-label="إغلاق القائمة">✕</button>
           </div>
 
           <nav class="adm-sidebar-nav">
-            ${navGroups.map(t => `
-              <button type="button" class="adm-nav-btn ${activeTab === t.id ? 'active' : ''}" data-adm-tab="${t.id}">
-                <span class="adm-nav-ic">${t.icon}</span>
-                <span class="adm-nav-lbl">${t.label}</span>
-                ${typeof t.badge === 'number' ? `<span class="adm-nav-badge ${t.id === 'bookings' && newEnqCount > 0 ? 'hot' : ''}">${t.badge}</span>` : ''}
-              </button>
+            ${navSections.map(sec => `
+              <div class="adm-nav-group">
+                <span class="adm-nav-group-lbl">${sec.title}</span>
+                ${sec.items.map(t => `
+                  <button type="button" class="adm-nav-btn ${activeTab === t.id ? 'active' : ''}" data-adm-tab="${t.id}">
+                    <span class="adm-nav-ic">${t.icon}</span>
+                    <span class="adm-nav-lbl">${t.label}</span>
+                    ${typeof t.badge === 'number' ? `<span class="adm-nav-badge ${t.id === 'bookings' && newEnqCount > 0 ? 'hot' : ''}">${t.badge}</span>` : ''}
+                  </button>
+                `).join('')}
+              </div>
             `).join('')}
           </nav>
 
-          <div class="adm-sidebar-foot" style="display:flex;flex-direction:column;gap:8px">
-            <a href="#/" class="adm-btn-gold" style="width:100%;text-align:center;text-decoration:none;display:block">العودة للموقع الحي ↗</a>
-            <button type="button" id="btn-adm-logout" class="adm-btn-outline-sm" style="width:100%;color:#fecaca;border-color:rgba(248,113,113,0.4)">🚪 تسجيل الخروج</button>
+          <div class="adm-sidebar-foot">
+            <button type="button" class="adm-btn-gold adm-foot-live" data-enable-live-edit="true">${ADM_ICONS.sparkle}<span>التحرير المباشر للموقع</span></button>
+            <div class="adm-foot-row">
+              <a href="#/" class="adm-foot-link">${ADM_ICONS.external}<span>عرض الموقع</span></a>
+              <button type="button" id="btn-adm-logout" class="adm-logout-btn">${ADM_ICONS.logout}<span>خروج</span></button>
+            </div>
           </div>
         </aside>
 
         <div class="adm-workspace-col">
           <header class="adm-topbar-v2">
             <div class="adm-topbar-title">
-              <span>${currentNav.icon}</span>
+              <button type="button" class="adm-mobile-menu-btn" id="adm-mobile-menu-btn" aria-label="فتح قائمة الأقسام" aria-expanded="false" aria-controls="adm-sidebar">${ADM_ICONS.menu}</button>
+              <span class="adm-topbar-ic">${currentNav.icon}</span>
               <h1>${currentNav.label}</h1>
             </div>
+
+            <div class="adm-cmd-wrap">
+              <span class="adm-cmd-ic">${ADM_ICONS.search}</span>
+              <input type="search" id="adm-cmd-search" autocomplete="off" placeholder="ابحث سريعاً عن أي إعداد، مركب، مزار، أو صفحة... (Ctrl+K)" aria-label="بحث سريع في لوحة التحكم">
+              <div id="adm-cmd-results" class="adm-cmd-results" hidden></div>
+            </div>
+
             <div class="adm-topbar-actions">
+              <div class="adm-history-btns" role="group" aria-label="التراجع والإعادة">
+                <button type="button" class="adm-icon-btn" id="adm-topbar-undo" ${canUndo() ? '' : 'disabled'} title="تراجع">↩</button>
+                <button type="button" class="adm-icon-btn" id="adm-topbar-redo" ${canRedo() ? '' : 'disabled'} title="إعادة">↪</button>
+              </div>
+              <button type="button" class="adm-btn-gold-sm adm-topbar-live-cta" data-enable-live-edit="true">${ADM_ICONS.sparkle}<span>تحرير الموقع مباشرة</span></button>
               <span class="adm-sync-pill ${lastSavedTime ? 'synced' : ''}" id="adm-sync-status">
-                ${lastSavedTime ? `متزامن ✓ (${lastSavedTime})` : 'متزامن مع الخادم ✓'}
+                ${lastSavedTime ? `متزامن ✓ (${lastSavedTime})` : 'متزامن ✓'}
               </span>
-              <a href="#/" class="adm-btn-outline-sm" target="_blank">فتح الموقع في تبويب ↗</a>
+              <a href="#/" class="adm-btn-outline-sm adm-open-site-btn" target="_blank" title="فتح الموقع في تبويب جديد">${ADM_ICONS.external}<span>الموقع</span></a>
             </div>
           </header>
 
           <main class="adm-main-scroll">
-            ${CMS.isDefaultPassword() ? `
+            ${CMS.isDefaultPassword() && !dismissedPwNotice ? `
               <div class="adm-security-notice">
-                <span>⚠️ تنبيه أمان: أنت تستخدم كلمة المرور الافتراضية حالياً. يُنصح بتغييرها قبل الإطلاق للعملاء.</span>
-                <button type="button" class="adm-btn-gold-sm" data-adm-tab="settings">تغيير كلمة المرور الآن</button>
+                <div style="display:flex;align-items:center;gap:8px">
+                  ${ADM_ICONS.shield}
+                  <span>تنبيه أمان: أنت تستخدم كلمة المرور الافتراضية. يُفضّل تغييرها قبل الإطلاق للعملاء.</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <button type="button" class="adm-btn-gold-sm" data-adm-tab="settings">تغيير كلمة المرور</button>
+                  <button type="button" class="adm-notice-dismiss" id="btn-dismiss-pw-notice" aria-label="إخفاء التنبيه">✕</button>
+                </div>
               </div>
             ` : ''}
             ${bodyContent}
@@ -3236,9 +3380,112 @@ window.NileTrailsAdmin = (() => {
 
   // ==================== EVENT BINDING ====================
   function bindAdminEvents(containerSelector, st) {
+    // Responsive Mobile Sidebar Drawer
+    const sidebar = $('#adm-sidebar');
+    const backdrop = $('#adm-nav-backdrop');
+    const menuBtn = $('#adm-mobile-menu-btn');
+    const closeSidebar = () => {
+      sidebar?.classList.remove('is-open');
+      if (backdrop) backdrop.hidden = true;
+      menuBtn?.setAttribute('aria-expanded', 'false');
+    };
+    const openSidebar = () => {
+      sidebar?.classList.add('is-open');
+      if (backdrop) backdrop.hidden = false;
+      menuBtn?.setAttribute('aria-expanded', 'true');
+    };
+    menuBtn?.addEventListener('click', () => (sidebar?.classList.contains('is-open') ? closeSidebar() : openSidebar()));
+    $('#adm-sidebar-close')?.addEventListener('click', closeSidebar);
+    backdrop?.addEventListener('click', closeSidebar);
+
+    // Quick-Jump Command Search (#adm-cmd-search + Ctrl+K)
+    const cmdInput = $('#adm-cmd-search');
+    const cmdBox = $('#adm-cmd-results');
+    if (cmdInput && cmdBox) {
+      const idxList = buildQuickJumpIndex(st);
+      const runCmdItem = (it) => {
+        cmdBox.hidden = true;
+        cmdInput.value = '';
+        closeSidebar();
+        if (it.act === 'live') { setEditMode(true); location.hash = '#/'; return; }
+        if (it.act === 'tab') { activeTab = it.val; searchQuery = ''; renderAdmin(containerSelector); return; }
+        if (it.act === 'sec') { openLiveSectionEditor(it.val, () => renderAdmin(containerSelector, { preserveScroll: true })); return; }
+        if (it.act === 'vessel') { activeTab = 'cruises'; selectedVesselId = it.val; renderAdmin(containerSelector); return; }
+        if (it.act === 'sight') { activeTab = 'sightseeing'; renderAdmin(containerSelector); openSightDrawer(st, Number(it.val), containerSelector); }
+      };
+      const renderCmdMatches = () => {
+        const q = cmdInput.value.trim().toLowerCase();
+        const matches = (q ? idxList.filter(i => `${i.label} ${i.hint}`.toLowerCase().includes(q)) : idxList.slice(0, 7)).slice(0, 8);
+        if (!matches.length) {
+          cmdBox.innerHTML = '<div class="adm-cmd-empty">لا توجد نتائج مطابقة</div>';
+        } else {
+          cmdBox.innerHTML = matches.map((m, i) => `
+            <button type="button" class="adm-cmd-row" data-cmd-idx="${i}">
+              <span>${esc(m.label)}</span>
+              <em>${esc(m.hint)}</em>
+            </button>
+          `).join('');
+          $$('[data-cmd-idx]', cmdBox).forEach(b => {
+            b.addEventListener('mousedown', (e) => {
+              e.preventDefault();
+              runCmdItem(matches[Number(b.dataset.cmdIdx)]);
+            });
+          });
+        }
+        cmdBox.hidden = false;
+      };
+      cmdInput.addEventListener('focus', renderCmdMatches);
+      cmdInput.addEventListener('input', renderCmdMatches);
+      cmdInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { cmdBox.hidden = true; cmdInput.blur(); }
+        if (e.key === 'Enter') {
+          const first = cmdBox.querySelector('.adm-cmd-row');
+          if (first) { e.preventDefault(); first.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); }
+        }
+      });
+      cmdInput.addEventListener('blur', () => setTimeout(() => { cmdBox.hidden = true; }, 160));
+    }
+
+    if (!window._ntAdmShortcutsBound) {
+      window._ntAdmShortcutsBound = true;
+      document.addEventListener('keydown', (e) => {
+        if (!location.hash.startsWith('#/admin')) return;
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          const ci = $('#adm-cmd-search');
+          ci?.focus();
+          ci?.select();
+        } else if (e.key === 'Escape') {
+          $('#adm-sidebar')?.classList.remove('is-open');
+          const bd = $('#adm-nav-backdrop');
+          if (bd) bd.hidden = true;
+        }
+      });
+    }
+
+    $('#adm-topbar-undo')?.addEventListener('click', () => undo(() => renderAdmin(containerSelector, { preserveScroll: true })));
+    $('#adm-topbar-redo')?.addEventListener('click', () => redo(() => renderAdmin(containerSelector, { preserveScroll: true })));
+    $('#btn-dismiss-pw-notice')?.addEventListener('click', () => {
+      dismissedPwNotice = true;
+      renderAdmin(containerSelector, { preserveScroll: true });
+    });
+
+    // Fleet list quick search
+    const vFilter = $('#adm-vessel-filter');
+    if (vFilter) {
+      vFilter.addEventListener('input', () => {
+        const pos = vFilter.selectionStart;
+        vesselFilterQuery = vFilter.value;
+        renderAdmin(containerSelector, { preserveScroll: true });
+        const nextV = $('#adm-vessel-filter');
+        if (nextV) { nextV.focus(); nextV.setSelectionRange(pos, pos); }
+      });
+    }
+
     // Sidebar tab switch
     $$('[data-adm-tab]').forEach(btn => {
       btn.addEventListener('click', () => {
+        closeSidebar();
         activeTab = btn.dataset.admTab;
         searchQuery = '';
         renderAdmin(containerSelector);
