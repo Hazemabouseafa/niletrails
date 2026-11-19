@@ -14,7 +14,33 @@
   const $$ = (s, c = document) => [...c.querySelectorAll(s)];
   const p = s => '#/' + (s || '');
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const photo = (src, alt, cls = '', eager = false) => `<img class="${cls}" src="${esc(src || IMG.sailing)}" alt="${esc(alt)}" loading="${eager ? 'eager' : 'lazy'}" decoding="${eager ? 'sync' : 'async'}" onerror="if(!this.dataset.fb){this.dataset.fb=1;this.src='${IMG.temple}';}">`;
+  const extractYoutubeId = (src) => {
+    const m = String(src || '').trim().match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([A-Za-z0-9_-]{11})/i);
+    return m ? m[1] : '';
+  };
+  const isVideoMediaUrl = (src) => {
+    const s = String(src || '').trim();
+    if (!s) return false;
+    if (/\.(mp4|webm|mov|m4v|ogv)(\?|#|$)/i.test(s)) return true;
+    if (extractYoutubeId(s)) return true;
+    if (/^data:video\//i.test(s)) return true;
+    return false;
+  };
+  const safeBgCssImg = (src, fallback = IMG.sailing) => (src && !isVideoMediaUrl(src)) ? src : fallback;
+  const liveMediaAttr = (path) => (isLiveEdit() && path) ? ` data-live-media="${esc(path)}"` : '';
+  const liveBgMediaAttr = (path, src) => isLiveEdit() ? `${path ? ` data-live-bg-media="${esc(path)}"` : ''} data-bg-src="${esc(src || '')}"` : '';
+  const photo = (src, alt, cls = '', eager = false, liveMediaPath = '') => {
+    const val = String(src || '').trim();
+    const mAttr = liveMediaAttr(liveMediaPath);
+    const ytId = extractYoutubeId(val);
+    if (ytId) {
+      return `<div class="nt-media-yt-wrap ${cls}"${mAttr} data-media-src="${esc(val)}"><iframe class="nt-media-yt" src="https://www.youtube.com/embed/${ytId}?autoplay=1&mute=1&loop=1&playlist=${ytId}&controls=0&rel=0&modestbranding=1&playsinline=1" frameborder="0" allow="autoplay; encrypted-media" tabindex="-1" title="${esc(alt || 'Video')}"></iframe></div>`;
+    }
+    if (isVideoMediaUrl(val)) {
+      return `<video class="nt-media-video ${cls}"${mAttr} src="${esc(val)}" autoplay muted loop playsinline preload="${eager ? 'auto' : 'metadata'}" aria-label="${esc(alt || 'NileTrails Video')}"></video>`;
+    }
+    return `<img class="${cls}"${mAttr} src="${esc(val || IMG.sailing)}" alt="${esc(alt)}" loading="${eager ? 'eager' : 'lazy'}" decoding="${eager ? 'sync' : 'async'}" onerror="if(!this.dataset.fb){this.dataset.fb=1;this.src='${IMG.temple}';}">`;
+  };
 
   function applyTheme(st) {
     const th = st?.settings?.theme || {};
@@ -177,19 +203,17 @@
   // Helper to render silent autoplay looping video background (supports local MP4 or YouTube URL fallback)
   function renderHeroVideoBg(videoSrc, posterImg = IMG.sailing) {
     if (!videoSrc) return '';
-    const ytMatch = String(videoSrc).match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/);
-    if (ytMatch) {
-      const vidId = ytMatch[1];
+    const ytId = extractYoutubeId(videoSrc);
+    if (ytId) {
       return `
         <div class="hero-video-wrap" aria-hidden="true">
-          <iframe class="hero-yt-iframe" src="https://www.youtube.com/embed/${vidId}?autoplay=1&mute=1&loop=1&playlist=${vidId}&controls=0&showinfo=0&rel=0&modestbranding=1&playsinline=1" frameborder="0" allow="autoplay; encrypted-media" tabindex="-1"></iframe>
+          <iframe class="hero-yt-iframe" src="https://www.youtube.com/embed/${ytId}?autoplay=1&mute=1&loop=1&playlist=${ytId}&controls=0&showinfo=0&rel=0&modestbranding=1&playsinline=1" frameborder="0" allow="autoplay; encrypted-media" tabindex="-1"></iframe>
         </div>`;
     }
+    const safePoster = safeBgCssImg(posterImg, IMG.sailing);
     return `
       <div class="hero-video-wrap" aria-hidden="true">
-        <video class="hero-bg-video" autoplay muted loop playsinline preload="auto" poster="${esc(posterImg)}">
-          <source src="${esc(videoSrc)}" type="video/mp4">
-        </video>
+        <video class="hero-bg-video" src="${esc(videoSrc)}" autoplay muted loop playsinline preload="auto" poster="${esc(safePoster)}"></video>
       </div>`;
   }
 
@@ -401,7 +425,7 @@
       ` : ''}
       <div class="header-inner wrap">
         <a class="logo" href="${p('')}" aria-label="${esc(s.brandName || 'NileTrails')} homepage">
-          ${photo(logoSrc, (s.brandName || 'NileTrails') + ' — Sailing the Nile', '', true)}
+          ${photo(logoSrc, (s.brandName || 'NileTrails') + ' — Sailing the Nile', '', true, 'settings.brandLogo')}
         </a>
         <nav class="desktop-nav" aria-label="Main navigation">
           ${menus.map(m => {
@@ -472,7 +496,7 @@
         </div>
         <div class="footer-grid">
           <div class="footer-intro">
-            <div class="footer-logo">${photo(logoSrc, s.brandName || 'NileTrails')}</div>
+            <div class="footer-logo">${photo(logoSrc, s.brandName || 'NileTrails', '', false, 'settings.brandLogo')}</div>
             <p${liveTextAttr('settings.footerAbout')}>${esc(footerAbout)}</p>
             <small${liveTextAttr('settings.tagline')}>${esc(s.tagline || 'SAILING THE NILE · DISCOVERING EGYPT')}</small>
           </div>
@@ -540,9 +564,13 @@
     return `<div class="section-header"><div>${label(over)}<h2>${title}</h2>${sub ? `<p class="section-desc">${sub}</p>` : ''}</div>${action}</div>`;
   }
 
-  function pageHero(title, eyebrow, sub, image = IMG.sailing, videoSrc = '') {
-    return `<section class="page-hero ${videoSrc ? 'has-video' : ''}" style="--page-img:url('${image}')">
-      ${videoSrc ? renderHeroVideoBg(videoSrc, image) : ''}
+  function pageHero(title, eyebrow, sub, image = IMG.sailing, videoSrc = '', opts = {}) {
+    const effVideo = isVideoMediaUrl(videoSrc) ? videoSrc : (isVideoMediaUrl(image) ? image : '');
+    const effPoster = safeBgCssImg((videoSrc && !isVideoMediaUrl(videoSrc)) ? videoSrc : image, IMG.sailing);
+    const bgPath = opts.bgMediaPath || '';
+    const bgSrc = effVideo || ((videoSrc && !isVideoMediaUrl(videoSrc)) ? videoSrc : image) || '';
+    return `<section class="page-hero ${effVideo ? 'has-video' : ''}" style="--page-img:url('${effPoster}')"${liveBgMediaAttr(bgPath, bgSrc)}>
+      ${effVideo ? renderHeroVideoBg(effVideo, effPoster) : ''}
       <div class="page-hero-shade"></div>
       <div class="wrap page-hero-inner">
         <div class="breadcrumb"><a href="${p('')}">Home</a><span>/</span>${esc(eyebrow)}</div>
@@ -554,19 +582,20 @@
     </section>`;
   }
 
-  // Render a Sightseeing Place Card (Photo + Short Description + Price Box + See More button + Optional Add-to-Journey toggle)
+  // Render a Sightseeing Place Card (Photo or Video + Short Description + Price Box + See More button + Optional Add-to-Journey toggle)
   function renderSightseeingCard(place, opts = {}) {
     const st = CMS.getState();
     const cur = st.settings?.currencySymbol || '$';
     const showAddToggle = Boolean(opts.showAddToggle);
     const eager = Boolean(opts.eager);
     const seeMoreUrl = `beyond-the-nile/nubian-and-the-nile/${place.slug}`;
+    const imgPath = place.id ? `sightseeingPlaces[id=${place.id}].image` : '';
 
     return `
       <article class="sight-place-card" data-location="${esc(place.location)}"${liveListAttr('sightseeingPlaces', 'id:' + place.id, 'مزار سياحي', { preview: place.title })}>
         <div class="spc-photo">
           <a href="${p(seeMoreUrl)}">
-            ${photo(place.image, place.title, '', eager)}
+            ${photo(place.image, place.title, '', eager, imgPath)}
           </a>
           <span class="spc-loc-badge">📍 <nt-tx${liveTextAttr(`sightseeingPlaces[id=${place.id}].location`)}>${esc(place.location)}</nt-tx></span>
           ${place.duration ? `<span class="spc-dur-badge">⏱ <nt-tx${liveTextAttr(`sightseeingPlaces[id=${place.id}].duration`)}>${esc(place.duration)}</nt-tx></span>` : ''}
@@ -617,10 +646,11 @@
     const cardKindMap = { cruise: 'نايل كروز', dahabiya: 'ذهبية شراعية', journey: 'رحلة متكاملة', destination: 'وجهة سياحية', story: 'مقال نيلي', 'custom-page': 'صفحة مخصصة' };
     const titlePath = item.id ? `${collKey}[id=${item.id}].${isPage || kind === 'cruise' || kind === 'dahabiya' || kind === 'story' ? 'title' : 'name'}` : '';
     const subPath = item.id ? `${collKey}[id=${item.id}].${isPage ? 'heroSub' : 'sub'}` : '';
+    const mediaPath = item.id ? `${collKey}[id=${item.id}].${isPage ? 'heroImage' : 'image'}` : '';
 
     return `<article class="collection-card"${liveListAttr(collKey, 'id:' + (item.id || item.slug), cardKindMap[kind] || 'بطاقة', { preview: name })}>
       <a class="card-photo" href="${p(slug)}">
-        ${photo(item.image || item.heroImage, name, '', eager)}
+        ${photo(item.image || item.heroImage, name, '', eager, mediaPath)}
         ${progsCount > 0 ? `<span class="card-prog-badge">${progsCount} Programs (3N · 4N · 7N)</span>` : ''}
         <span class="card-hover">View itinerary, facilities & book ↗</span>
         ${liveCardCtrl(cardTarget, isPage ? 'تعديل الصفحة' : 'تعديل')}
@@ -654,7 +684,8 @@
     const hasExp = expId && (CMS.getState().homeConfig?.experiences || []).some(e => e.id === expId);
     const titlePath = hasExp ? `homeConfig.experiences[id=${expId}].title` : '';
     const descPath = hasExp ? `homeConfig.experiences[id=${expId}].desc` : '';
-    return `<a class="experience-tile ${classname}" href="${p(href)}"${hasExp ? liveListAttr('homeConfig.experiences', 'id:' + expId, 'تجربة رئيسية', { preview: name }) : ''}><div class="tile-image">${photo(image, name, '', eager)}</div><div class="tile-shade"></div>${liveCardCtrl('experiences', 'تعديل الكارت')}<div class="tile-top">0${n}<span>EXPERIENCE</span></div><div class="tile-bottom"><h3${liveTextAttr(titlePath)}>${name}</h3><p${liveTextAttr(descPath)}>${text}</p><span>Explore this way <b>↗</b></span></div></a>`;
+    const mediaPath = hasExp ? `homeConfig.experiences[id=${expId}].image` : '';
+    return `<a class="experience-tile ${classname}" href="${p(href)}"${hasExp ? liveListAttr('homeConfig.experiences', 'id:' + expId, 'تجربة رئيسية', { preview: name }) : ''}><div class="tile-image">${photo(image, name, '', eager, mediaPath)}</div><div class="tile-shade"></div>${liveCardCtrl('experiences', 'تعديل الكارت')}<div class="tile-top">0${n}<span>EXPERIENCE</span></div><div class="tile-bottom"><h3${liveTextAttr(titlePath)}>${name}</h3><p${liveTextAttr(descPath)}>${text}</p><span>Explore this way <b>↗</b></span></div></a>`;
   }
 
   function home() {
@@ -670,7 +701,10 @@
     const homeAddons = (st.addons || []).filter(a => a.enabled !== false && a.showOnHome);
     const activeStories = (st.stories || []).filter(s => s.enabled !== false);
     const sightseeing = (st.sightseeingPlaces || []).filter(s => s.enabled !== false);
-    const heroVideoSrc = hc.heroVideo || V + 'hero-main.mp4';
+    const rawHeroMedia = (hc.heroVideo !== undefined && hc.heroVideo !== '')
+      ? hc.heroVideo
+      : (isVideoMediaUrl(hc.heroImage) ? hc.heroImage : (hc.heroVideo === '' ? '' : V + 'hero-main.mp4'));
+    const heroVideoSrc = isVideoMediaUrl(rawHeroMedia) ? rawHeroMedia : '';
     const experiencesList = (Array.isArray(hc.experiences) && hc.experiences.length) ? hc.experiences : [
       { id: 'exp-1', title: 'Nile Cruises', desc: 'Curated 3, 4 & 7-night programs with onboard facilities & private Egyptologist.', url: 'nile-cruises', image: IMG.cruise },
       { id: 'exp-2', title: 'Dahabiyas', desc: 'Tradition, intimacy and the unhurried art of wind-powered sailing.', url: 'dahabiyas', image: IMG.sailing },
@@ -753,7 +787,7 @@
         </section>` : '',
       signature: () => `
         <section class="signature-section">
-          <div class="signature-image">${photo(hc.signatureImage || IMG.sailing, 'Traditional dahabiya sailing on the Nile', '', true)}</div>
+          <div class="signature-image">${photo(hc.signatureImage || IMG.sailing, 'Traditional dahabiya sailing on the Nile', '', true, 'homeConfig.signatureImage')}</div>
           <div class="signature-copy">
             ${label(`<span${liveTextAttr('homeConfig.signatureEyebrow')}>${esc(hc.signatureEyebrow || 'A DIFFERENT WAY TO TRAVEL')}</span>`)}
             <h2${liveTextAttr('homeConfig.signatureTitle', true)}>${hc.signatureTitle || 'Let the days<br><em>unfold naturally.</em>'}</h2>
@@ -772,7 +806,7 @@
             ${homeAddons.map(ad => `
               <article class="collection-card addon-home-card"${liveListAttr('addons', 'id:' + ad.id, 'إضافة برنامج', { preview: ad.title })}>
                 <div class="card-photo">
-                  ${photo(ad.image, ad.title, '', true)}
+                  ${photo(ad.image, ad.title, '', true, `addons[id=${ad.id}].image`)}
                   <span class="card-prog-badge"${liveTextAttr(`addons[id=${ad.id}].duration`)}>${esc(ad.duration)}</span>
                   ${liveCardCtrl('addon:' + ad.id, 'تعديل الإضافة')}
                 </div>
@@ -799,8 +833,8 @@
               ${button(`<nt-tx${liveTextAttr('homeConfig.journeysBtnText')}>${esc(hc.journeysBtnText || 'Explore Journeys')}</nt-tx>`, hc.journeysBtnUrl || 'journeys', 'btn-gold')}
             </div>
             <div class="journey-feature-tiles">
-              <a href="${p('journeys/classic-nile-journey')}" class="journey-feature-card">${photo(hc.journeysCard1Image || IMG.temple, hc.journeysCard1Title || 'Classic Nile Journey')}${liveCardCtrl('journeysFeature', 'تعديل الكارت')}<div><small${liveTextAttr('homeConfig.journeysCard1Sub')}>${esc(hc.journeysCard1Sub || '01 / THE ESSENTIALS')}</small><h3${liveTextAttr('homeConfig.journeysCard1Title')}>${esc(hc.journeysCard1Title || 'Classic Nile Journey')}</h3><span>Discover the route ↗</span></div></a>
-              <a href="${p('beyond-the-nile/nubian-and-the-nile')}" class="journey-feature-card lower">${photo(hc.journeysCard2Image || IMG.sailing, hc.journeysCard2Title || 'Nubian & the Nile Sightseeing')}${liveCardCtrl('journeysFeature', 'تعديل الكارت')}<div><small${liveTextAttr('homeConfig.journeysCard2Sub')}>${esc(hc.journeysCard2Sub || '02 / BEYOND THE NILE')}</small><h3${liveTextAttr('homeConfig.journeysCard2Title')}>${esc(hc.journeysCard2Title || 'Nubian & the Nile Sightseeing')}</h3><span>Explore 15 iconic places ↗</span></div></a>
+              <a href="${p('journeys/classic-nile-journey')}" class="journey-feature-card">${photo(hc.journeysCard1Image || IMG.temple, hc.journeysCard1Title || 'Classic Nile Journey', '', false, 'homeConfig.journeysCard1Image')}${liveCardCtrl('journeysFeature', 'تعديل الكارت')}<div><small${liveTextAttr('homeConfig.journeysCard1Sub')}>${esc(hc.journeysCard1Sub || '01 / THE ESSENTIALS')}</small><h3${liveTextAttr('homeConfig.journeysCard1Title')}>${esc(hc.journeysCard1Title || 'Classic Nile Journey')}</h3><span>Discover the route ↗</span></div></a>
+              <a href="${p('beyond-the-nile/nubian-and-the-nile')}" class="journey-feature-card lower">${photo(hc.journeysCard2Image || IMG.sailing, hc.journeysCard2Title || 'Nubian & the Nile Sightseeing', '', false, 'homeConfig.journeysCard2Image')}${liveCardCtrl('journeysFeature', 'تعديل الكارت')}<div><small${liveTextAttr('homeConfig.journeysCard2Sub')}>${esc(hc.journeysCard2Sub || '02 / BEYOND THE NILE')}</small><h3${liveTextAttr('homeConfig.journeysCard2Title')}>${esc(hc.journeysCard2Title || 'Nubian & the Nile Sightseeing')}</h3><span>Explore 15 iconic places ↗</span></div></a>
             </div>
           </div>
         </section>`,
@@ -808,11 +842,15 @@
         <section class="stories-section wrap section-space">
           ${sectionTitle(`<span${liveTextAttr('homeConfig.storiesEyebrow')}>${esc(hc.storiesEyebrow || 'FROM THE JOURNAL')}</span>`, `<nt-tx${liveTextAttr('homeConfig.storiesTitle', true)}>${hc.storiesTitle || 'Stories worth <em>taking with you.</em>'}</nt-tx>`, `<nt-tx${liveTextAttr('homeConfig.storiesSub')}>${esc(hc.storiesSub || 'Guides, ideas and inspiration for seeing Egypt with fresh eyes.')}</nt-tx>`, arrow('Visit Nile Stories', 'nile-stories'))}
           <div class="story-row">
-            ${activeStories.slice(0, 3).map(s => `<a href="${p('nile-stories/' + s.slug)}" class="story-tile"${liveListAttr('stories', 'id:' + s.id, 'مقال نيلي', { preview: s.title })}>${photo(s.image, s.title)}${liveCardCtrl('collection:stories:' + s.id, 'تعديل المقال')}<div><span${liveTextAttr(`stories[id=${s.id}].category`)}>${esc(s.category)}</span><h3${liveTextAttr(`stories[id=${s.id}].title`)}>${esc(s.title)}</h3><small>Read the story ↗</small></div></a>`).join('')}
+            ${activeStories.slice(0, 3).map(s => `<a href="${p('nile-stories/' + s.slug)}" class="story-tile"${liveListAttr('stories', 'id:' + s.id, 'مقال نيلي', { preview: s.title })}>${photo(s.image, s.title, '', false, `stories[id=${s.id}].image`)}${liveCardCtrl('collection:stories:' + s.id, 'تعديل المقال')}<div><span${liveTextAttr(`stories[id=${s.id}].category`)}>${esc(s.category)}</span><h3${liveTextAttr(`stories[id=${s.id}].title`)}>${esc(s.title)}</h3><small>Read the story ↗</small></div></a>`).join('')}
           </div>
         </section>` : '',
-      closingBanner: () => `
-        <section class="closing-banner" style="--closing-img:url('${hc.closingImage || IMG.temple}')">
+      closingBanner: () => {
+        const closingSrc = hc.closingImage || IMG.temple;
+        const closingVid = isVideoMediaUrl(closingSrc) ? closingSrc : '';
+        return `
+        <section class="closing-banner ${closingVid ? 'has-video' : ''}" style="--closing-img:url('${safeBgCssImg(closingSrc, IMG.temple)}')"${liveBgMediaAttr('homeConfig.closingImage', closingSrc)}>
+          ${closingVid ? `${renderHeroVideoBg(closingVid, IMG.temple)}<div class="closing-banner-shade"></div>` : ''}
           <div class="wrap">
             <div>
               ${label(`<span${liveTextAttr('homeConfig.closingEyebrow')}>${esc(hc.closingEyebrow || 'MADE FOR YOUR MOMENTS')}</span>`)}
@@ -821,14 +859,17 @@
               ${button(`<nt-tx${liveTextAttr('homeConfig.closingBtnText')}>${esc(hc.closingBtnText || 'Plan Your Journey')}</nt-tx>`, hc.closingBtnUrl || 'plan-your-journey', 'btn-gold')}
             </div>
           </div>
-        </section>`
+        </section>`;
+      }
     };
 
     const allSections = hc.sections || hc.sectionsOrder || [];
     const sectionsToRender = live ? allSections : allSections.filter(s => s.enabled !== false);
 
-    const heroHtml = `<section class="hero-home has-video" style="--hero-img:url('${hc.heroImage || IMG.sailing}')">
-      ${renderHeroVideoBg(heroVideoSrc, hc.heroImage || IMG.sailing)}
+    const heroBgImg = safeBgCssImg(!heroVideoSrc && rawHeroMedia ? rawHeroMedia : hc.heroImage, IMG.sailing);
+    const heroBgVal = rawHeroMedia || hc.heroImage || IMG.sailing;
+    const heroHtml = `<section class="hero-home ${heroVideoSrc ? 'has-video' : ''}" style="--hero-img:url('${heroBgImg}')"${liveBgMediaAttr(hc.heroVideo !== '' ? 'homeConfig.heroVideo' : 'homeConfig.heroImage', heroBgVal)}>
+      ${heroVideoSrc ? renderHeroVideoBg(heroVideoSrc, heroBgImg) : ''}
       <div class="hero-gradient"></div>
       <div class="wrap hero-home-inner">
         <div class="hero-copy">
@@ -946,7 +987,8 @@
     const activeProg = programs.find(pr => pr.slug === requestedProgSlug || pr.id === requestedProgSlug) || programs[0];
     if (!activeProg) return '<section class="wrap section-space"><p>No programs configured for this vessel yet.</p></section>';
 
-    const heroVideo = activeProg.heroVideo || vessel.heroVideo || (isCruise ? V + 'hero-cruise-1.mp4' : V + 'hero-dahabiya-1.mp4');
+    const rawHeroMedia = activeProg.heroVideo || vessel.heroVideo || (isVideoMediaUrl(vessel.image) ? vessel.image : (isCruise ? V + 'hero-cruise-1.mp4' : V + 'hero-dahabiya-1.mp4'));
+    const heroVideo = isVideoMediaUrl(rawHeroMedia) ? rawHeroMedia : '';
     const vColl = isCruise ? 'cruises' : 'dahabiyas';
     const vPath = `${vColl}[id=${vessel.id}]`;
     const progPath = `${vPath}.programs[id=${activeProg.id}]`;
@@ -980,10 +1022,11 @@
     const winterDouble = activeProg.pricingSeasons?.winter?.double || Math.round(basePrice * 1.18);
     const winterSingle = activeProg.pricingSeasons?.winter?.single || Math.round(basePrice * 1.9);
 
+    const vesselPoster = safeBgCssImg(!heroVideo && rawHeroMedia ? rawHeroMedia : vessel.image, IMG.cruise);
     return `
       <!-- CINEMATIC SILENT AUTOPLAY VIDEO HERO FOR THIS CRUISE & PROGRAM -->
-      <section class="nct-hero has-video" style="--page-img:url('${vessel.image || IMG.cruise}')">
-        ${renderHeroVideoBg(heroVideo, vessel.image || IMG.cruise)}
+      <section class="nct-hero ${heroVideo ? 'has-video' : ''}" style="--page-img:url('${vesselPoster}')"${liveBgMediaAttr(`${progPath}.heroVideo`, rawHeroMedia)}>
+        ${heroVideo ? renderHeroVideoBg(heroVideo, vesselPoster) : ''}
         <div class="nct-hero-shade"></div>
         <div class="wrap nct-hero-inner">
           <div class="breadcrumb">
@@ -1353,7 +1396,7 @@
                       return `
                       <label class="addon-select-card" for="addon-chk-${esc(ad.id)}"${isDirectAddon ? liveListAttr('addons', 'id:' + ad.id, 'إضافة برنامج', { preview: ad.title }) : ''}>
                         <input type="checkbox" id="addon-chk-${esc(ad.id)}" name="addons" value="${esc(ad.id)}" data-addon-title="${esc(ad.title)}" data-addon-price="${ad.price}" data-addon-unit="${esc(ad.priceUnit)}">
-                        <div class="addon-card-photo">${photo(ad.image, ad.title)}<span class="addon-dur-badge"${ap ? liveTextAttr(`${ap}.duration`) : ''}>${esc(ad.duration)}</span></div>
+                        <div class="addon-card-photo">${photo(ad.image, ad.title, '', false, isDirectAddon ? `${ap}.image` : '')}<span class="addon-dur-badge"${ap ? liveTextAttr(`${ap}.duration`) : ''}>${esc(ad.duration)}</span></div>
                         <div class="addon-card-info">
                           <div class="addon-card-top">
                             <span class="addon-cat"${ap ? liveTextAttr(`${ap}.category`) : ''}>${esc(ad.category)}</span>
@@ -1381,7 +1424,7 @@
                       return `
                       <label class="addon-select-card" for="addon-chk-${esc(ad.id)}"${isDirectAddon ? liveListAttr('addons', 'id:' + ad.id, 'إضافة برنامج', { preview: ad.title }) : ''}>
                         <input type="checkbox" id="addon-chk-${esc(ad.id)}" name="addons" value="${esc(ad.id)}" data-addon-title="${esc(ad.title)}" data-addon-price="${ad.price}" data-addon-unit="${esc(ad.priceUnit)}">
-                        <div class="addon-card-photo">${photo(ad.image, ad.title)}<span class="addon-dur-badge"${ap ? liveTextAttr(`${ap}.duration`) : ''}>${esc(ad.duration)}</span></div>
+                        <div class="addon-card-photo">${photo(ad.image, ad.title, '', false, isDirectAddon ? `${ap}.image` : '')}<span class="addon-dur-badge"${ap ? liveTextAttr(`${ap}.duration`) : ''}>${esc(ad.duration)}</span></div>
                         <div class="addon-card-info">
                           <div class="addon-card-top">
                             <span class="addon-cat"${ap ? liveTextAttr(`${ap}.category`) : ''}>${esc(ad.category)}</span>
@@ -1596,9 +1639,11 @@
       const otherPlaces = places.filter(pl => pl.slug !== place.slug);
       const allCruises = (st.cruises || []).filter(c => c.enabled !== false).slice(0, 3);
 
+      const sightHeroPoster = safeBgCssImg(place.image, IMG.temple);
+      const sightHeroVid = isVideoMediaUrl(place.image) ? place.image : (V + 'hero-dahabiya-2.mp4');
       return `
-        <section class="nct-hero has-video" style="--page-img:url('${place.image}')">
-          ${renderHeroVideoBg(V + 'hero-dahabiya-2.mp4', place.image)}
+        <section class="nct-hero has-video" style="--page-img:url('${sightHeroPoster}')"${liveBgMediaAttr(`sightseeingPlaces[id=${place.id}].image`, place.image)}>
+          ${renderHeroVideoBg(sightHeroVid, sightHeroPoster)}
           <div class="nct-hero-shade"></div>
           <div class="wrap nct-hero-inner">
             <div class="breadcrumb">
@@ -1624,7 +1669,7 @@
         <section class="wrap nct-layout" style="padding-top:48px">
           <article class="nct-main">
             <div class="sight-detail-cover">
-              ${photo(place.image, place.title)}
+              ${photo(place.image, place.title, '', false, `sightseeingPlaces[id=${place.id}].image`)}
               <div class="sight-detail-price-pill">
                 <small>GUIDED EXCURSION PRICE</small>
                 <strong>${cur}${place.price} <span>/ <nt-tx${liveTextAttr(`sightseeingPlaces[id=${place.id}].priceUnit`)}>${esc(place.priceUnit || 'per person')}</nt-tx></span></strong>
@@ -1851,7 +1896,7 @@
       switch (blk.type) {
         case 'text-image':
           return `<section class="about-split wrap section-space">
-            <div class="about-image">${photo(blk.image || page.heroImage || IMG.sailing, blk.heading || page.title)}</div>
+            <div class="about-image">${photo(blk.image || page.heroImage || IMG.sailing, blk.heading || page.title, '', false, `customPages[id=${page.id}].blocks.${bIdx}.image`)}</div>
             <div>
               ${blk.eyebrow ? label(`<span${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.eyebrow`)}>${esc(blk.eyebrow)}</span>`) : ''}
               <h2${liveTextAttr(`customPages[id=${page.id}].blocks.${bIdx}.heading`, true)}>${blk.heading || esc(page.title)}</h2>
@@ -1945,7 +1990,7 @@
       }
     };
 
-    const html = `${pageHero(`<span${liveTextAttr(`customPages[id=${page.id}].title`)}>${esc(page.title)}</span>`, esc(pageEyebrow), `<span${liveTextAttr(`customPages[id=${page.id}].heroSub`)}>${esc(pageSub)}</span>`, page.heroImage || IMG.sailing, V + 'hero-cruise-2.mp4')}
+    const html = `${pageHero(`<span${liveTextAttr(`customPages[id=${page.id}].title`)}>${esc(page.title)}</span>`, esc(pageEyebrow), `<span${liveTextAttr(`customPages[id=${page.id}].heroSub`)}>${esc(pageSub)}</span>`, page.heroImage || IMG.sailing, isVideoMediaUrl(page.heroImage) ? page.heroImage : V + 'hero-cruise-2.mp4', { bgMediaPath: `customPages[id=${page.id}].heroImage` })}
       ${liveActionBar(`تحرير صفحة: ${page.title}`, [
         { target: `page:${page.id}`, label: '✏ تعديل الصفحة وإدارة البلوكات', primary: true },
         { target: 'create:page', label: '+ إنشاء صفحة جديدة' }
@@ -1957,13 +2002,13 @@
   function journeyListing() {
     const st = CMS.getState();
     const journeys = (st.journeys || []).filter(j => j.enabled !== false);
-    return `${pageHero('Journeys', 'JOURNEYS', 'Not a fixed package. A more meaningful way to experience Egypt.', IMG.temple, V + 'hero-cruise-3.mp4')}<section class="wrap section-space"><div class="editorial-lede">${label('HOW WE TRAVEL')}<h2>Begin with an idea.<br><em>Make the journey yours.</em></h2><p>Our Journeys bring together Egypt’s most compelling places with the Nile at the centre. Each concept is a starting point to be adjusted to your time, interests and travel style.</p></div><div class="journeys-list">${journeys.map((j, i) => `<a class="journey-row" href="${p('journeys/' + j.slug)}"><span class="row-num">0${i + 1}</span><div class="journey-thumb">${photo(j.image, j.name)}${liveCardCtrl(`collection:journeys:${j.id || j.slug}`, 'تعديل')}</div><div><span class="overline">${esc(j.tag)}</span><h3${liveTextAttr(j.id ? `journeys[id=${j.id}].name` : '')}>${esc(j.name)}</h3><p${liveTextAttr(j.id ? `journeys[id=${j.id}].route` : '')}>${esc(j.route)}</p></div><span class="row-arrow">↗</span></a>`).join('')}</div></section>`;
+    return `${pageHero('Journeys', 'JOURNEYS', 'Not a fixed package. A more meaningful way to experience Egypt.', IMG.temple, V + 'hero-cruise-3.mp4')}<section class="wrap section-space"><div class="editorial-lede">${label('HOW WE TRAVEL')}<h2>Begin with an idea.<br><em>Make the journey yours.</em></h2><p>Our Journeys bring together Egypt’s most compelling places with the Nile at the centre. Each concept is a starting point to be adjusted to your time, interests and travel style.</p></div><div class="journeys-list">${journeys.map((j, i) => `<a class="journey-row" href="${p('journeys/' + j.slug)}"><span class="row-num">0${i + 1}</span><div class="journey-thumb">${photo(j.image, j.name, '', false, j.id ? `journeys[id=${j.id}].image` : '')}${liveCardCtrl(`collection:journeys:${j.id || j.slug}`, 'تعديل')}</div><div><span class="overline">${esc(j.tag)}</span><h3${liveTextAttr(j.id ? `journeys[id=${j.id}].name` : '')}>${esc(j.name)}</h3><p${liveTextAttr(j.id ? `journeys[id=${j.id}].route` : '')}>${esc(j.route)}</p></div><span class="row-arrow">↗</span></a>`).join('')}</div></section>`;
   }
 
   function journeyDetail(j) {
     const st = CMS.getState();
     const journeys = (st.journeys || []).filter(x => x.enabled !== false);
-    return `${pageHero(`<span${liveTextAttr(j.id ? `journeys[id=${j.id}].name` : '')}>${esc(j.name)}</span>`, 'TAILOR-MADE JOURNEY', `<span${liveTextAttr(j.id ? `journeys[id=${j.id}].route` : '')}>${esc(j.route)}</span>`, j.image, V + 'hero-cruise-2.mp4')}${liveActionBar(`تحرير برنامج الرحلة: ${j.name}`, [{ target: `collection:journeys:${j.id || j.slug}`, label: '✏ تعديل هذه الرحلة', primary: true }])}<section class="wrap journey-detail section-space"><div class="editorial-lede">${label('A JOURNEY TO MAKE YOUR OWN')}<h2>Explore more, <em>your way.</em></h2><p${liveTextAttr(j.id ? `journeys[id=${j.id}].summary` : '')}>${esc(j.summary)} We can adapt the pace, accommodation, Nile sailing experience and extensions to suit you.</p></div><div class="journey-details-grid"><div><h3>The journey at a glance</h3><div class="route-steps">${j.route.split(' · ').map((r, i) => `<div><span>0${i + 1}</span><strong>${esc(r)}</strong></div>`).join('')}</div><h3>Shape this experience around you</h3><p>Prefer longer on the river? Want time for a different part of Egypt? Each route is a suggested direction — not a rigid departure or fixed tour.</p></div><aside class="journey-aside"><h3>Your route. Your rhythm.</h3><p>Our travel designer will help turn this journey concept into a personalised itinerary.</p>${button('Customise This Journey', `plan-your-journey?interest=journey&experience=${j.slug}`, 'btn-gold')}</aside></div></section><section class="wrap related-section">${sectionTitle('KEEP DISCOVERING', 'More ideas, <em>more possibilities.</em>')}<div class="card-grid three">${journeys.filter(x => x.slug !== j.slug).slice(0, 3).map(x => miniCard(x, 'journey')).join('')}</div></section>`;
+    return `${pageHero(`<span${liveTextAttr(j.id ? `journeys[id=${j.id}].name` : '')}>${esc(j.name)}</span>`, 'TAILOR-MADE JOURNEY', `<span${liveTextAttr(j.id ? `journeys[id=${j.id}].route` : '')}>${esc(j.route)}</span>`, j.image, isVideoMediaUrl(j.image) ? j.image : V + 'hero-cruise-2.mp4', { bgMediaPath: j.id ? `journeys[id=${j.id}].image` : '' })}${liveActionBar(`تحرير برنامج الرحلة: ${j.name}`, [{ target: `collection:journeys:${j.id || j.slug}`, label: '✏ تعديل هذه الرحلة', primary: true }])}<section class="wrap journey-detail section-space"><div class="editorial-lede">${label('A JOURNEY TO MAKE YOUR OWN')}<h2>Explore more, <em>your way.</em></h2><p${liveTextAttr(j.id ? `journeys[id=${j.id}].summary` : '')}>${esc(j.summary)} We can adapt the pace, accommodation, Nile sailing experience and extensions to suit you.</p></div><div class="journey-details-grid"><div><h3>The journey at a glance</h3><div class="route-steps">${j.route.split(' · ').map((r, i) => `<div><span>0${i + 1}</span><strong>${esc(r)}</strong></div>`).join('')}</div><h3>Shape this experience around you</h3><p>Prefer longer on the river? Want time for a different part of Egypt? Each route is a suggested direction — not a rigid departure or fixed tour.</p></div><aside class="journey-aside"><h3>Your route. Your rhythm.</h3><p>Our travel designer will help turn this journey concept into a personalised itinerary.</p>${button('Customise This Journey', `plan-your-journey?interest=journey&experience=${j.slug}`, 'btn-gold')}</aside></div></section><section class="wrap related-section">${sectionTitle('KEEP DISCOVERING', 'More ideas, <em>more possibilities.</em>')}<div class="card-grid three">${journeys.filter(x => x.slug !== j.slug).slice(0, 3).map(x => miniCard(x, 'journey')).join('')}</div></section>`;
   }
 
   function destinationsPage() {
@@ -1981,7 +2026,7 @@
       <section class="wrap section-space" style="padding-top:0">
         ${sectionTitle('DISCOVER EGYPT', 'Where will curiosity <em>take you?</em>', 'From Nubia and the Nile to Cairo, Alexandria, the Red Sea and the quiet beauty of the desert.')}
         <div class="destination-grid">
-          ${destinations.map((d, i) => `<a href="${p('beyond-the-nile/' + d.slug)}" class="destination-tile ${i === 0 ? 'destination-feature' : ''}">${photo(d.image, d.name)}${liveCardCtrl(`collection:destinations:${d.id || d.slug}`, 'تعديل')}<div><small>0${i + 1} / BEYOND THE NILE</small><h3${liveTextAttr(d.id ? `destinations[id=${d.id}].name` : '')}>${esc(d.name)}</h3><span>${esc(d.subtitle)} ↗</span></div></a>`).join('')}
+          ${destinations.map((d, i) => `<a href="${p('beyond-the-nile/' + d.slug)}" class="destination-tile ${i === 0 ? 'destination-feature' : ''}">${photo(d.image, d.name, '', false, d.id ? `destinations[id=${d.id}].image` : '')}${liveCardCtrl(`collection:destinations:${d.id || d.slug}`, 'تعديل')}<div><small>0${i + 1} / BEYOND THE NILE</small><h3${liveTextAttr(d.id ? `destinations[id=${d.id}].name` : '')}>${esc(d.name)}</h3><span>${esc(d.subtitle)} ↗</span></div></a>`).join('')}
         </div>
       </section>`;
   }
@@ -1993,7 +2038,7 @@
     const st = CMS.getState();
     const journeys = (st.journeys || []).filter(j => j.enabled !== false);
     const selected = journeys.filter(j => j.route.toLowerCase().includes(d.name.split(' ')[0].toLowerCase())).slice(0, 2);
-    return `${pageHero(`<span${liveTextAttr(d.id ? `destinations[id=${d.id}].name` : '')}>${esc(d.name)}</span>`, 'BEYOND THE NILE', esc(d.subtitle), d.image, V + 'hero-cruise-3.mp4')}${liveActionBar(`تحرير الوجهة: ${d.name}`, [{ target: `collection:destinations:${d.id || d.slug}`, label: '✏ تعديل هذه الوجهة', primary: true }])}<section class="wrap section-space"><div class="editorial-lede">${label('DISCOVER THIS DESTINATION')}<h2>Every place has <em>a story.</em></h2><p${liveTextAttr(d.id ? `destinations[id=${d.id}].desc` : '')}>${esc(d.desc)}</p></div><div class="destination-detail-columns"><article><h3>Discover</h3><p>Explore the landscape, local culture and experiences that make ${esc(d.name)} distinctive. Travel details can be adjusted to your pace and interests.</p><h3>Experiences</h3><p>History, nature, food and local encounters can all add a richer perspective to your journey.</p><h3>Stay & travel</h3><p>Accommodation and transport recommendations will be matched to your travel dates and preferences.</p><h3>Suggested Journeys</h3><div class="related-journey-list">${(selected.length ? selected : journeys.slice(0, 2)).map(j => `<a href="${p('journeys/' + j.slug)}">${esc(j.name)}<span>↗</span></a>`).join('')}</div></article><aside class="destination-photo">${photo(IMG.sailing, 'Sailing on the Nile')}<div>Make this a part of your journey.${button('Plan Your Journey', 'plan-your-journey', 'btn-gold')}</div></aside></div></section>`;
+    return `${pageHero(`<span${liveTextAttr(d.id ? `destinations[id=${d.id}].name` : '')}>${esc(d.name)}</span>`, 'BEYOND THE NILE', esc(d.subtitle), d.image, isVideoMediaUrl(d.image) ? d.image : V + 'hero-cruise-3.mp4', { bgMediaPath: d.id ? `destinations[id=${d.id}].image` : '' })}${liveActionBar(`تحرير الوجهة: ${d.name}`, [{ target: `collection:destinations:${d.id || d.slug}`, label: '✏ تعديل هذه الوجهة', primary: true }])}<section class="wrap section-space"><div class="editorial-lede">${label('DISCOVER THIS DESTINATION')}<h2>Every place has <em>a story.</em></h2><p${liveTextAttr(d.id ? `destinations[id=${d.id}].desc` : '')}>${esc(d.desc)}</p></div><div class="destination-detail-columns"><article><h3>Discover</h3><p>Explore the landscape, local culture and experiences that make ${esc(d.name)} distinctive. Travel details can be adjusted to your pace and interests.</p><h3>Experiences</h3><p>History, nature, food and local encounters can all add a richer perspective to your journey.</p><h3>Stay & travel</h3><p>Accommodation and transport recommendations will be matched to your travel dates and preferences.</p><h3>Suggested Journeys</h3><div class="related-journey-list">${(selected.length ? selected : journeys.slice(0, 2)).map(j => `<a href="${p('journeys/' + j.slug)}">${esc(j.name)}<span>↗</span></a>`).join('')}</div></article><aside class="destination-photo">${photo(IMG.sailing, 'Sailing on the Nile')}<div>Make this a part of your journey.${button('Plan Your Journey', 'plan-your-journey', 'btn-gold')}</div></aside></div></section>`;
   }
 
   function storyList() {
@@ -2001,39 +2046,39 @@
     const stories = (st.stories || []).filter(s => s.enabled !== false);
     const c = new URLSearchParams(location.hash.split('?')[1] || '').get('category') || '';
     let arr = stories.filter(s => !c || s.category.toLowerCase().replace(/[^a-z0-9]+/g, '-') === c);
-    return `${pageHero('Nile Stories', 'NILE STORIES', 'A journal of places, people and the journeys in between.', IMG.temple)}<section class="wrap section-space">${sectionTitle('THE NILETRAILS JOURNAL', 'A little more <em>Egypt.</em>', 'Travel inspiration, useful ideas and glimpses of life along the river.')}<div class="pill-row"><a class="pill ${!c ? 'active' : ''}" href="${p('nile-stories')}">All Stories</a>${['Nile Cruise Guide', 'Dahabiya Life', 'Egypt Travel Guide', 'Temples & Tombs'].map(x => `<a class="pill ${c === x.toLowerCase().replace(/[^a-z0-9]+/g, '-') ? 'active' : ''}" href="${p('nile-stories?category=' + x.toLowerCase().replace(/[^a-z0-9]+/g, '-'))}">${x}</a>`).join('')}</div><div class="story-grid">${arr.map(s => `<a href="${p('nile-stories/' + s.slug)}" class="story-feature">${photo(s.image, s.title)}${liveCardCtrl(`collection:stories:${s.id || s.slug}`, 'تعديل المقال')}<div><small>${esc(s.category)} / ${esc(s.date)}</small><h3${liveTextAttr(s.id ? `stories[id=${s.id}].title` : '')}>${esc(s.title)}</h3><p${liveTextAttr(s.id ? `stories[id=${s.id}].excerpt` : '')}>${esc(s.summary || s.excerpt)}</p><span>Read story ↗</span></div></a>`).join('')}</div>${arr.length ? '' : '<div class="no-results">No articles in this category yet.</div>'}</section>`;
+    return `${pageHero('Nile Stories', 'NILE STORIES', 'A journal of places, people and the journeys in between.', IMG.temple)}<section class="wrap section-space">${sectionTitle('THE NILETRAILS JOURNAL', 'A little more <em>Egypt.</em>', 'Travel inspiration, useful ideas and glimpses of life along the river.')}<div class="pill-row"><a class="pill ${!c ? 'active' : ''}" href="${p('nile-stories')}">All Stories</a>${['Nile Cruise Guide', 'Dahabiya Life', 'Egypt Travel Guide', 'Temples & Tombs'].map(x => `<a class="pill ${c === x.toLowerCase().replace(/[^a-z0-9]+/g, '-') ? 'active' : ''}" href="${p('nile-stories?category=' + x.toLowerCase().replace(/[^a-z0-9]+/g, '-'))}">${x}</a>`).join('')}</div><div class="story-grid">${arr.map(s => `<a href="${p('nile-stories/' + s.slug)}" class="story-feature">${photo(s.image, s.title, '', false, s.id ? `stories[id=${s.id}].image` : '')}${liveCardCtrl(`collection:stories:${s.id || s.slug}`, 'تعديل المقال')}<div><small>${esc(s.category)} / ${esc(s.date)}</small><h3${liveTextAttr(s.id ? `stories[id=${s.id}].title` : '')}>${esc(s.title)}</h3><p${liveTextAttr(s.id ? `stories[id=${s.id}].excerpt` : '')}>${esc(s.summary || s.excerpt)}</p><span>Read story ↗</span></div></a>`).join('')}</div>${arr.length ? '' : '<div class="no-results">No articles in this category yet.</div>'}</section>`;
   }
 
   function storyDetail(s) {
-    return `${liveActionBar(`تحرير المقال: ${s.title}`, [{ target: `collection:stories:${s.id || s.slug}`, label: '✏ تعديل المقال والصورة', primary: true }])}<article class="story-detail"><div class="wrap story-heading"><div class="breadcrumb dark"><a href="${p('')}">Home</a> / <a href="${p('nile-stories')}">Nile Stories</a> / ${esc(s.category)}</div>${label(esc(s.category))}<h1${liveTextAttr(s.id ? `stories[id=${s.id}].title` : '')}>${esc(s.title)}</h1><p${liveTextAttr(s.id ? `stories[id=${s.id}].summary` : '')}>${esc(s.summary || s.excerpt)}</p></div><div class="story-cover">${photo(s.image, s.title)}</div><div class="story-reading"><p class="article-lead">${esc(s.summary || s.excerpt)}</p><p>Every journey begins with curiosity. The Nile invites you to discover a culture and landscape that have shaped travellers for generations — whether from the deck of a traditional sailing vessel or during a carefully planned journey on land.</p><h2>Travel with a sense of discovery</h2><p>Think about your own pace, the places you most want to see and the experiences that are meaningful to you. The best itinerary is not always the busiest; there is beauty in allowing time for the unexpected.</p><h2>Make space for the moments</h2><p>A thoughtful Nile journey leaves room for the river, for local stories and for those small details that make travel memorable. Our team can help shape your experience around what matters to you.</p><div class="article-note"><b>Planning your own journey?</b><span>Start a conversation with a NileTrails travel designer.</span>${arrow('Plan Your Journey', 'plan-your-journey')}</div></div></article>`;
+    return `${liveActionBar(`تحرير المقال: ${s.title}`, [{ target: `collection:stories:${s.id || s.slug}`, label: '✏ تعديل المقال والصورة', primary: true }])}<article class="story-detail"><div class="wrap story-heading"><div class="breadcrumb dark"><a href="${p('')}">Home</a> / <a href="${p('nile-stories')}">Nile Stories</a> / ${esc(s.category)}</div>${label(esc(s.category))}<h1${liveTextAttr(s.id ? `stories[id=${s.id}].title` : '')}>${esc(s.title)}</h1><p${liveTextAttr(s.id ? `stories[id=${s.id}].summary` : '')}>${esc(s.summary || s.excerpt)}</p></div><div class="story-cover">${photo(s.image, s.title, '', false, s.id ? `stories[id=${s.id}].image` : '')}</div><div class="story-reading"><p class="article-lead">${esc(s.summary || s.excerpt)}</p><p>Every journey begins with curiosity. The Nile invites you to discover a culture and landscape that have shaped travellers for generations — whether from the deck of a traditional sailing vessel or during a carefully planned journey on land.</p><h2>Travel with a sense of discovery</h2><p>Think about your own pace, the places you most want to see and the experiences that are meaningful to you. The best itinerary is not always the busiest; there is beauty in allowing time for the unexpected.</p><h2>Make space for the moments</h2><p>A thoughtful Nile journey leaves room for the river, for local stories and for those small details that make travel memorable. Our team can help shape your experience around what matters to you.</p><div class="article-note"><b>Planning your own journey?</b><span>Start a conversation with a NileTrails travel designer.</span>${arrow('Plan Your Journey', 'plan-your-journey')}</div></div></article>`;
   }
 
   function about(page = '') {
     const spAll = CMS.getState().staticPages || {};
     if (page === 'our-team') {
       const pData = spAll['our-team'] || {};
-      const html = `${pageHero(`<span${liveTextAttr('staticPages.our-team.title')}>${esc(pData.title || 'Our Team')}</span>`, esc(pData.eyebrow || 'ABOUT NILETRAILS'), `<span${liveTextAttr('staticPages.our-team.subtitle')}>${esc(pData.subtitle || 'Real people who care about how you experience Egypt.')}</span>`, pData.heroImage || IMG.temple, pData.heroVideo || '')}<section class="wrap section-space editorial-lede">${label(esc(pData.sectionEyebrow || 'THE PEOPLE BEHIND THE JOURNEYS'))}<h2${liveTextAttr('staticPages.our-team.heading', true)}>${pData.heading || 'Travel is <em>personal.</em>'}</h2><p${liveTextAttr('staticPages.our-team.body1')}>${esc(pData.body1 || 'We believe thoughtful journeys begin with people who listen. Our team profiles and verified credentials will be published once confirmed by NileTrails.')}</p>${pData.body2 ? `<p${liveTextAttr('staticPages.our-team.body2')}>${esc(pData.body2)}</p>` : ''}${button(esc(pData.ctaText || 'Meet your travel designer'), pData.ctaUrl || 'contact', 'btn-outline')}</section>`;
+      const html = `${pageHero(`<span${liveTextAttr('staticPages.our-team.title')}>${esc(pData.title || 'Our Team')}</span>`, esc(pData.eyebrow || 'ABOUT NILETRAILS'), `<span${liveTextAttr('staticPages.our-team.subtitle')}>${esc(pData.subtitle || 'Real people who care about how you experience Egypt.')}</span>`, pData.heroImage || IMG.temple, pData.heroVideo || '', { bgMediaPath: 'staticPages.our-team.heroImage' })}<section class="wrap section-space editorial-lede">${label(esc(pData.sectionEyebrow || 'THE PEOPLE BEHIND THE JOURNEYS'))}<h2${liveTextAttr('staticPages.our-team.heading', true)}>${pData.heading || 'Travel is <em>personal.</em>'}</h2><p${liveTextAttr('staticPages.our-team.body1')}>${esc(pData.body1 || 'We believe thoughtful journeys begin with people who listen. Our team profiles and verified credentials will be published once confirmed by NileTrails.')}</p>${pData.body2 ? `<p${liveTextAttr('staticPages.our-team.body2')}>${esc(pData.body2)}</p>` : ''}${button(esc(pData.ctaText || 'Meet your travel designer'), pData.ctaUrl || 'contact', 'btn-outline')}</section>`;
       return liveSecWrap('static:our-team', 'تحرير صفحة: Our Team', html);
     }
     if (page === 'why-niletrails') {
       const pData = spAll['why-niletrails'] || {};
-      const html = `${pageHero(`<span${liveTextAttr('staticPages.why-niletrails.title')}>${esc(pData.title || 'Why NileTrails')}</span>`, esc(pData.eyebrow || 'ABOUT NILETRAILS'), `<span${liveTextAttr('staticPages.why-niletrails.subtitle')}>${esc(pData.subtitle || 'Thoughtful choices, memorable experiences, genuine discovery.')}</span>`, pData.heroImage || IMG.sailing, pData.heroVideo || '')}<section class="wrap section-space editorial-lede">${label(esc(pData.sectionEyebrow || 'WHAT WE BELIEVE'))}<h2${liveTextAttr('staticPages.why-niletrails.heading', true)}>${pData.heading || 'Thoughtful travel,<br><em>beautifully considered.</em>'}</h2><p${liveTextAttr('staticPages.why-niletrails.body1')}>${esc(pData.body1 || 'From choosing the right style of Nile sailing to connecting your favourite destinations, we focus on experiences that feel personal, unhurried and full of meaning.')}</p>${pData.body2 ? `<p${liveTextAttr('staticPages.why-niletrails.body2')}>${esc(pData.body2)}</p>` : ''}<div class="three-notes"><div><b>01</b><h3>River-led experiences</h3><p>The Nile connects our cruises, dahabiyas and journeys.</p></div><div><b>02</b><h3>Choice without pressure</h3><p>A range of travel styles, not a single definition of luxury.</p></div><div><b>03</b><h3>Designed around you</h3><p>Your interests and your pace shape the journey.</p></div></div></section>`;
+      const html = `${pageHero(`<span${liveTextAttr('staticPages.why-niletrails.title')}>${esc(pData.title || 'Why NileTrails')}</span>`, esc(pData.eyebrow || 'ABOUT NILETRAILS'), `<span${liveTextAttr('staticPages.why-niletrails.subtitle')}>${esc(pData.subtitle || 'Thoughtful choices, memorable experiences, genuine discovery.')}</span>`, pData.heroImage || IMG.sailing, pData.heroVideo || '', { bgMediaPath: 'staticPages.why-niletrails.heroImage' })}<section class="wrap section-space editorial-lede">${label(esc(pData.sectionEyebrow || 'WHAT WE BELIEVE'))}<h2${liveTextAttr('staticPages.why-niletrails.heading', true)}>${pData.heading || 'Thoughtful travel,<br><em>beautifully considered.</em>'}</h2><p${liveTextAttr('staticPages.why-niletrails.body1')}>${esc(pData.body1 || 'From choosing the right style of Nile sailing to connecting your favourite destinations, we focus on experiences that feel personal, unhurried and full of meaning.')}</p>${pData.body2 ? `<p${liveTextAttr('staticPages.why-niletrails.body2')}>${esc(pData.body2)}</p>` : ''}<div class="three-notes"><div><b>01</b><h3>River-led experiences</h3><p>The Nile connects our cruises, dahabiyas and journeys.</p></div><div><b>02</b><h3>Choice without pressure</h3><p>A range of travel styles, not a single definition of luxury.</p></div><div><b>03</b><h3>Designed around you</h3><p>Your interests and your pace shape the journey.</p></div></div></section>`;
       return liveSecWrap('static:why-niletrails', 'تحرير صفحة: Why NileTrails', html);
     }
     const pData = spAll['our-story'] || {};
-    const html = `${pageHero(`<span${liveTextAttr('staticPages.our-story.title')}>${esc(pData.title || (page === 'our-story' ? 'Our Story' : 'About NileTrails'))}</span>`, esc(pData.eyebrow || 'ABOUT NILETRAILS'), `<span${liveTextAttr('staticPages.our-story.subtitle')}>${esc(pData.subtitle || 'A different perspective on Egypt, with the river at its heart.')}</span>`, pData.heroImage || IMG.sailing, pData.heroVideo || '')}<section class="about-split wrap section-space"><div class="about-image">${photo(pData.sideImage || IMG.temple, 'Egyptian temple at golden hour')}</div><div>${label(esc(pData.sectionEyebrow || 'WHY WE EXIST'))}<h2${liveTextAttr('staticPages.our-story.heading', true)}>${pData.heading || 'Egypt is more than a place to visit.<br><em>It is a journey to feel.</em>'}</h2><p${liveTextAttr('staticPages.our-story.body1')}>${esc(pData.body1 || 'NileTrails is built around a simple idea: the most memorable travel happens when people, place and pace come together.')}</p>${pData.body2 !== '' ? `<p${liveTextAttr('staticPages.our-story.body2')}>${esc(pData.body2 || 'Our focus begins with the Nile — its remarkable landscapes, timeless cultures and the many ways to experience them — then extends across Egypt through thoughtfully designed journeys.')}</p>` : ''}${button(esc(pData.ctaText || 'Why Travel With Us'), pData.ctaUrl || 'about/why-niletrails', 'btn-outline')}</div></section><section class="belief-section wrap">${sectionTitle('THE NILETRAILS APPROACH', 'Our approach to <em>exploring Egypt.</em>')}<div class="three-notes"><div><b>01</b><h3>Rooted in the Nile</h3><p>The river is our starting point, not the limit of what you can discover.</p></div><div><b>02</b><h3>Different ways to sail</h3><p>From comfortable cruises to traditional dahabiyas and private experiences.</p></div><div><b>03</b><h3>Personal from the start</h3><p>A journey designed around your interests, schedule and aspirations.</p></div></div></section>`;
+    const html = `${pageHero(`<span${liveTextAttr('staticPages.our-story.title')}>${esc(pData.title || (page === 'our-story' ? 'Our Story' : 'About NileTrails'))}</span>`, esc(pData.eyebrow || 'ABOUT NILETRAILS'), `<span${liveTextAttr('staticPages.our-story.subtitle')}>${esc(pData.subtitle || 'A different perspective on Egypt, with the river at its heart.')}</span>`, pData.heroImage || IMG.sailing, pData.heroVideo || '', { bgMediaPath: 'staticPages.our-story.heroImage' })}<section class="about-split wrap section-space"><div class="about-image">${photo(pData.sideImage || IMG.temple, 'Egyptian temple at golden hour', '', false, 'staticPages.our-story.sideImage')}</div><div>${label(esc(pData.sectionEyebrow || 'WHY WE EXIST'))}<h2${liveTextAttr('staticPages.our-story.heading', true)}>${pData.heading || 'Egypt is more than a place to visit.<br><em>It is a journey to feel.</em>'}</h2><p${liveTextAttr('staticPages.our-story.body1')}>${esc(pData.body1 || 'NileTrails is built around a simple idea: the most memorable travel happens when people, place and pace come together.')}</p>${pData.body2 !== '' ? `<p${liveTextAttr('staticPages.our-story.body2')}>${esc(pData.body2 || 'Our focus begins with the Nile — its remarkable landscapes, timeless cultures and the many ways to experience them — then extends across Egypt through thoughtfully designed journeys.')}</p>` : ''}${button(esc(pData.ctaText || 'Why Travel With Us'), pData.ctaUrl || 'about/why-niletrails', 'btn-outline')}</div></section><section class="belief-section wrap">${sectionTitle('THE NILETRAILS APPROACH', 'Our approach to <em>exploring Egypt.</em>')}<div class="three-notes"><div><b>01</b><h3>Rooted in the Nile</h3><p>The river is our starting point, not the limit of what you can discover.</p></div><div><b>02</b><h3>Different ways to sail</h3><p>From comfortable cruises to traditional dahabiyas and private experiences.</p></div><div><b>03</b><h3>Personal from the start</h3><p>A journey designed around your interests, schedule and aspirations.</p></div></div></section>`;
     return liveSecWrap('static:our-story', 'تحرير صفحة: Our Story / About', html);
   }
 
   function travelInfo() {
     const pData = (CMS.getState().staticPages || {})['travel-information'] || {};
-    const html = `${pageHero(`<span${liveTextAttr('staticPages.travel-information.title')}>${esc(pData.title || 'Travel Information')}</span>`, esc(pData.eyebrow || 'BEFORE YOU GO'), `<span${liveTextAttr('staticPages.travel-information.subtitle')}>${esc(pData.subtitle || 'Thoughtful planning for a more enjoyable journey.')}</span>`, pData.heroImage || IMG.temple, pData.heroVideo || '')}<section class="wrap section-space"><div class="editorial-lede">${label(esc(pData.sectionEyebrow || 'PREPARE FOR EGYPT'))}<h2${liveTextAttr('staticPages.travel-information.heading', true)}>${pData.heading || 'A little preparation.<br><em>A lot more discovery.</em>'}</h2><p${liveTextAttr('staticPages.travel-information.body1')}>${esc(pData.body1 || 'These are general planning topics rather than legal or visa advice. Always verify current entry requirements, health guidance and travel conditions with official sources before departure.')}</p></div><div class="accordion travel-accordion">${[['When to visit', 'Egypt’s climate varies by region and season. Your ideal travel period depends on your preferred activities and tolerance for heat.'], ['Visas and entry', 'Entry requirements depend on your nationality and passport. Check the current requirements with official Egyptian authorities or your consulate.'], ['Packing for the Nile', 'Comfortable layers, sun protection, sensible walking shoes and respect for local customs are good starting points.'], ['Cruise routes and timings', 'Schedules, navigation conditions, vessel availability and sightseeing arrangements can vary. Confirm your departure details before booking.'], ['Travelling with family', 'Share the ages and interests of your group when enquiring so the pace and experience can be tailored.']].map(([a, b], i) => `<details ${i === 0 ? 'open' : ''}><summary>${a}<span>+</span></summary><p>${b}</p></details>`).join('')}</div></section>`;
+    const html = `${pageHero(`<span${liveTextAttr('staticPages.travel-information.title')}>${esc(pData.title || 'Travel Information')}</span>`, esc(pData.eyebrow || 'BEFORE YOU GO'), `<span${liveTextAttr('staticPages.travel-information.subtitle')}>${esc(pData.subtitle || 'Thoughtful planning for a more enjoyable journey.')}</span>`, pData.heroImage || IMG.temple, pData.heroVideo || '', { bgMediaPath: 'staticPages.travel-information.heroImage' })}<section class="wrap section-space"><div class="editorial-lede">${label(esc(pData.sectionEyebrow || 'PREPARE FOR EGYPT'))}<h2${liveTextAttr('staticPages.travel-information.heading', true)}>${pData.heading || 'A little preparation.<br><em>A lot more discovery.</em>'}</h2><p${liveTextAttr('staticPages.travel-information.body1')}>${esc(pData.body1 || 'These are general planning topics rather than legal or visa advice. Always verify current entry requirements, health guidance and travel conditions with official sources before departure.')}</p></div><div class="accordion travel-accordion">${[['When to visit', 'Egypt’s climate varies by region and season. Your ideal travel period depends on your preferred activities and tolerance for heat.'], ['Visas and entry', 'Entry requirements depend on your nationality and passport. Check the current requirements with official Egyptian authorities or your consulate.'], ['Packing for the Nile', 'Comfortable layers, sun protection, sensible walking shoes and respect for local customs are good starting points.'], ['Cruise routes and timings', 'Schedules, navigation conditions, vessel availability and sightseeing arrangements can vary. Confirm your departure details before booking.'], ['Travelling with family', 'Share the ages and interests of your group when enquiring so the pace and experience can be tailored.']].map(([a, b], i) => `<details ${i === 0 ? 'open' : ''}><summary>${a}<span>+</span></summary><p>${b}</p></details>`).join('')}</div></section>`;
     return liveSecWrap('static:travel-information', 'تحرير صفحة: Travel Information', html);
   }
 
   function contact() {
     const pData = (CMS.getState().staticPages || {})['contact'] || {};
-    const html = `${pageHero(`<span${liveTextAttr('staticPages.contact.title')}>${esc(pData.title || 'Start a Conversation')}</span>`, esc(pData.eyebrow || 'CONTACT US'), `<span${liveTextAttr('staticPages.contact.subtitle')}>${esc(pData.subtitle || 'Tell us what you imagine. We’ll help shape the journey.')}</span>`, pData.heroImage || IMG.sailing, pData.heroVideo || '')}<section class="wrap contact-layout section-space"><div class="contact-copy">${label(esc(pData.sectionEyebrow || 'WE WOULD LOVE TO HEAR FROM YOU'))}<h2${liveTextAttr('staticPages.contact.heading', true)}>${pData.heading || 'Every great journey<br><em>starts here.</em>'}</h2><p${liveTextAttr('staticPages.contact.body1')}>${esc(pData.body1 || 'Whether you know exactly how you want to travel or are still exploring the possibilities, share a few details and let us start planning together.')}</p><div class="contact-note"><b>What happens next?</b><p${liveTextAttr('staticPages.contact.body2')}>${esc(pData.body2 || 'We review your preferences, discuss the possibilities and help you refine the right direction for your trip.')}</p></div></div><form id="contact-form" class="contact-form"><h3>Send an enquiry</h3><div class="two-fields"><label>Full name *<input name="name" autocomplete="name" required placeholder="Your full name"></label><label>Email address *<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label></div><div class="two-fields"><label>Nationality / Country<input name="nationality" list="contact-countries" placeholder="Your country"><datalist id="contact-countries">${WORLD_COUNTRIES.map(c => `<option value="${c}"></option>`).join('')}</datalist></label><label>Phone / WhatsApp<input name="phone" type="tel" autocomplete="tel" placeholder="+44 / +1 ..."></label></div><div class="two-fields"><label>Interested in<select name="interest"><option>Nile Cruises & Programs</option><option>Dahabiyas</option><option>Nubian & the Nile Sightseeing</option><option>Journeys</option><option>Custom Add-ons Package</option></select></label><label>Travel period<input type="month" name="period"></label></div><label>Your message *<textarea name="message" required rows="5" placeholder="Tell us a little about your ideas..."></textarea></label><label class="check-field"><input type="checkbox" required> I agree to be contacted about my enquiry. *</label><div id="contact-feedback" class="form-feedback" role="status"></div><button class="button btn-gold" type="submit">Send Enquiry <span>↗</span></button></form></section>`;
+    const html = `${pageHero(`<span${liveTextAttr('staticPages.contact.title')}>${esc(pData.title || 'Start a Conversation')}</span>`, esc(pData.eyebrow || 'CONTACT US'), `<span${liveTextAttr('staticPages.contact.subtitle')}>${esc(pData.subtitle || 'Tell us what you imagine. We’ll help shape the journey.')}</span>`, pData.heroImage || IMG.sailing, pData.heroVideo || '', { bgMediaPath: 'staticPages.contact.heroImage' })}<section class="wrap contact-layout section-space"><div class="contact-copy">${label(esc(pData.sectionEyebrow || 'WE WOULD LOVE TO HEAR FROM YOU'))}<h2${liveTextAttr('staticPages.contact.heading', true)}>${pData.heading || 'Every great journey<br><em>starts here.</em>'}</h2><p${liveTextAttr('staticPages.contact.body1')}>${esc(pData.body1 || 'Whether you know exactly how you want to travel or are still exploring the possibilities, share a few details and let us start planning together.')}</p><div class="contact-note"><b>What happens next?</b><p${liveTextAttr('staticPages.contact.body2')}>${esc(pData.body2 || 'We review your preferences, discuss the possibilities and help you refine the right direction for your trip.')}</p></div></div><form id="contact-form" class="contact-form"><h3>Send an enquiry</h3><div class="two-fields"><label>Full name *<input name="name" autocomplete="name" required placeholder="Your full name"></label><label>Email address *<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label></div><div class="two-fields"><label>Nationality / Country<input name="nationality" list="contact-countries" placeholder="Your country"><datalist id="contact-countries">${WORLD_COUNTRIES.map(c => `<option value="${c}"></option>`).join('')}</datalist></label><label>Phone / WhatsApp<input name="phone" type="tel" autocomplete="tel" placeholder="+44 / +1 ..."></label></div><div class="two-fields"><label>Interested in<select name="interest"><option>Nile Cruises & Programs</option><option>Dahabiyas</option><option>Nubian & the Nile Sightseeing</option><option>Journeys</option><option>Custom Add-ons Package</option></select></label><label>Travel period<input type="month" name="period"></label></div><label>Your message *<textarea name="message" required rows="5" placeholder="Tell us a little about your ideas..."></textarea></label><label class="check-field"><input type="checkbox" required> I agree to be contacted about my enquiry. *</label><div id="contact-feedback" class="form-feedback" role="status"></div><button class="button btn-gold" type="submit">Send Enquiry <span>↗</span></button></form></section>`;
     return liveSecWrap('static:contact', 'تحرير صفحة: Contact Us', html);
   }
 
@@ -2052,13 +2097,13 @@
     const privacy = t === 'privacy';
     const key = privacy ? 'privacy-policy' : 'terms-and-conditions';
     const pData = (CMS.getState().staticPages || {})[key] || {};
-    const html = `${pageHero(`<span${liveTextAttr(`staticPages.${key}.title`)}>${esc(pData.title || (privacy ? 'Privacy Policy' : 'Terms & Conditions'))}</span>`, esc(pData.eyebrow || (privacy ? 'PRIVACY' : 'TERMS')), `<span${liveTextAttr(`staticPages.${key}.subtitle`)}>${esc(pData.subtitle || 'Information about the website and its services.')}</span>`, pData.heroImage || IMG.temple, pData.heroVideo || '')}<section class="wrap legal-body section-space"><h2${liveTextAttr(`staticPages.${key}.heading`, true)}>${pData.heading || 'Publication Information'}</h2><p${liveTextAttr(`staticPages.${key}.body1`)}>${esc(pData.body1 || `This page is reserved for NileTrails’ reviewed ${privacy ? 'privacy policy' : 'booking and website terms'}.`)}</p>${pData.body2 ? `<p${liveTextAttr(`staticPages.${key}.body2`)}>${esc(pData.body2)}</p>` : ''}${button('Contact NileTrails', 'contact', 'btn-outline')}</section>`;
+    const html = `${pageHero(`<span${liveTextAttr(`staticPages.${key}.title`)}>${esc(pData.title || (privacy ? 'Privacy Policy' : 'Terms & Conditions'))}</span>`, esc(pData.eyebrow || (privacy ? 'PRIVACY' : 'TERMS')), `<span${liveTextAttr(`staticPages.${key}.subtitle`)}>${esc(pData.subtitle || 'Information about the website and its services.')}</span>`, pData.heroImage || IMG.temple, pData.heroVideo || '', { bgMediaPath: `staticPages.${key}.heroImage` })}<section class="wrap legal-body section-space"><h2${liveTextAttr(`staticPages.${key}.heading`, true)}>${pData.heading || 'Publication Information'}</h2><p${liveTextAttr(`staticPages.${key}.body1`)}>${esc(pData.body1 || `This page is reserved for NileTrails’ reviewed ${privacy ? 'privacy policy' : 'booking and website terms'}.`)}</p>${pData.body2 ? `<p${liveTextAttr(`staticPages.${key}.body2`)}>${esc(pData.body2)}</p>` : ''}${button('Contact NileTrails', 'contact', 'btn-outline')}</section>`;
     return liveSecWrap('static:' + key, 'تحرير صفحة: ' + (privacy ? 'Privacy Policy' : 'Terms & Conditions'), html);
   }
 
   function whyDahabiya() {
     const pData = (CMS.getState().staticPages || {})['why-dahabiya'] || {};
-    const html = `${pageHero(`<span${liveTextAttr('staticPages.why-dahabiya.title')}>${esc(pData.title || 'Why Sail by Dahabiya?')}</span>`, esc(pData.eyebrow || 'THE DAHABIYA EXPERIENCE'), `<span${liveTextAttr('staticPages.why-dahabiya.subtitle')}>${esc(pData.subtitle || 'Experience the Nile the traditional way — slowly, intimately and with care.')}</span>`, pData.heroImage || IMG.sailing, pData.heroVideo || V + 'hero-dahabiya-1.mp4')}<section class="about-split wrap section-space"><div class="about-image">${photo(pData.sideImage || IMG.sailing, 'Sailing dahabiya on Nile')}</div><div>${label(esc(pData.sectionEyebrow || 'THE ART OF SLOW TRAVEL'))}<h2${liveTextAttr('staticPages.why-dahabiya.heading', true)}>${pData.heading || 'Less rushing.<br><em>More remembering.</em>'}</h2><p${liveTextAttr('staticPages.why-dahabiya.body1')}>${esc(pData.body1 || 'For travellers who enjoy quieter moments, smaller vessels and a stronger connection to the river, the dahabiya offers an inspiring alternative to a conventional Nile cruise.')}</p>${pData.body2 !== '' ? `<p${liveTextAttr('staticPages.why-dahabiya.body2')}>${esc(pData.body2 || 'Explore luxury, deluxe and private sailing styles — then personalise the experience around you.')}</p>` : ''}${button(esc(pData.ctaText || 'Explore the Collection'), pData.ctaUrl || 'dahabiyas', 'btn-outline')}</div></section>`;
+    const html = `${pageHero(`<span${liveTextAttr('staticPages.why-dahabiya.title')}>${esc(pData.title || 'Why Sail by Dahabiya?')}</span>`, esc(pData.eyebrow || 'THE DAHABIYA EXPERIENCE'), `<span${liveTextAttr('staticPages.why-dahabiya.subtitle')}>${esc(pData.subtitle || 'Experience the Nile the traditional way — slowly, intimately and with care.')}</span>`, pData.heroImage || IMG.sailing, pData.heroVideo || V + 'hero-dahabiya-1.mp4', { bgMediaPath: 'staticPages.why-dahabiya.heroImage' })}<section class="about-split wrap section-space"><div class="about-image">${photo(pData.sideImage || IMG.sailing, 'Sailing dahabiya on Nile', '', false, 'staticPages.why-dahabiya.sideImage')}</div><div>${label(esc(pData.sectionEyebrow || 'THE ART OF SLOW TRAVEL'))}<h2${liveTextAttr('staticPages.why-dahabiya.heading', true)}>${pData.heading || 'Less rushing.<br><em>More remembering.</em>'}</h2><p${liveTextAttr('staticPages.why-dahabiya.body1')}>${esc(pData.body1 || 'For travellers who enjoy quieter moments, smaller vessels and a stronger connection to the river, the dahabiya offers an inspiring alternative to a conventional Nile cruise.')}</p>${pData.body2 !== '' ? `<p${liveTextAttr('staticPages.why-dahabiya.body2')}>${esc(pData.body2 || 'Explore luxury, deluxe and private sailing styles — then personalise the experience around you.')}</p>` : ''}${button(esc(pData.ctaText || 'Explore the Collection'), pData.ctaUrl || 'dahabiyas', 'btn-outline')}</div></section>`;
     return liveSecWrap('static:why-dahabiya', 'تحرير صفحة: Why Dahabiya', html);
   }
 
@@ -2517,6 +2562,7 @@
       });
       ['data-utx-key', 'data-utx-html', 'data-live-text', 'data-live-html', 'data-live-list', 'data-live-item',
        'data-live-kind', 'data-live-fallback', 'data-live-preview', 'data-live-base-price',
+       'data-live-media', 'data-live-bg-media', 'data-bg-src', 'data-media-src',
        'data-nt-bound-inline', 'data-nt-sec-bound', 'data-nt-dom-id', 'contenteditable', 'spellcheck'].forEach(a => node.removeAttribute(a));
       if (node.getAttribute('title')?.includes('انقر للتعديل')) node.removeAttribute('title');
       [...node.children].forEach(stripNodeAttrs);
@@ -2543,6 +2589,83 @@
     'marginTop', 'marginBottom', 'borderColor', 'borderWidth', 'borderStyle', 'maxWidth'
   ]);
   const ALLOWED_DOM_ATTR_NAMES = new Set(['src', 'alt', 'href', 'target', 'rel']);
+
+  function applyDomMediaSwap(t, nextSrc, nextAlt) {
+    if (!t || !t.parentElement) return t;
+    const val = String(nextSrc || '').trim();
+    if (!val) return t;
+    if (t.matches?.('.page-hero, .hero-home, .nct-hero, .closing-banner')) {
+      t.dataset.bgSrc = val;
+      const oldWrap = t.querySelector(':scope > .hero-video-wrap');
+      if (oldWrap) oldWrap.remove();
+      if (isVideoMediaUrl(val)) {
+        t.classList.add('has-video');
+        const tmp = document.createElement('div');
+        tmp.innerHTML = renderHeroVideoBg(val, IMG.sailing).trim();
+        const wrap = tmp.firstElementChild;
+        if (wrap) t.prepend(wrap);
+        const v = wrap?.querySelector('video');
+        if (v) { v.muted = true; v.play().catch(() => {}); }
+      } else {
+        t.classList.remove('has-video');
+        const cssVar = t.classList.contains('hero-home') ? '--hero-img'
+          : (t.classList.contains('closing-banner') ? '--closing-img' : '--page-img');
+        t.style.setProperty(cssVar, `url('${val.replace(/'/g, '%27')}')`);
+      }
+      return t;
+    }
+
+    if (!t.matches?.('img, video, .nt-media-yt-wrap')) {
+      t.setAttribute('src', val);
+      return t;
+    }
+
+    const baseClasses = [...(t.classList || [])].filter(c => c !== 'nt-media-video' && c !== 'nt-media-yt-wrap');
+    const altText = nextAlt !== undefined
+      ? String(nextAlt || '')
+      : (t.getAttribute('alt') || t.getAttribute('aria-label') || '');
+    const styleCss = t.style?.cssText || '';
+    const domId = t.dataset?.ntDomId || '';
+    const liveMediaPath = t.dataset?.liveMedia || '';
+
+    const ytId = extractYoutubeId(val);
+    let nextNode;
+    if (ytId) {
+      nextNode = document.createElement('div');
+      nextNode.className = ['nt-media-yt-wrap', ...baseClasses].join(' ').trim();
+      nextNode.dataset.mediaSrc = val;
+      nextNode.innerHTML = `<iframe class="nt-media-yt" src="https://www.youtube.com/embed/${ytId}?autoplay=1&mute=1&loop=1&playlist=${ytId}&controls=0&rel=0&modestbranding=1&playsinline=1" frameborder="0" allow="autoplay; encrypted-media" tabindex="-1" title="${esc(altText || 'Video')}"></iframe>`;
+    } else if (isVideoMediaUrl(val)) {
+      nextNode = document.createElement('video');
+      nextNode.className = ['nt-media-video', ...baseClasses].join(' ').trim();
+      nextNode.src = val;
+      nextNode.autoplay = true;
+      nextNode.muted = true;
+      nextNode.loop = true;
+      nextNode.playsInline = true;
+      nextNode.setAttribute('autoplay', '');
+      nextNode.setAttribute('muted', '');
+      nextNode.setAttribute('loop', '');
+      nextNode.setAttribute('playsinline', '');
+      nextNode.preload = 'metadata';
+      if (altText) nextNode.setAttribute('aria-label', altText);
+    } else {
+      nextNode = document.createElement('img');
+      if (baseClasses.length) nextNode.className = baseClasses.join(' ');
+      nextNode.src = val;
+      nextNode.alt = altText;
+      nextNode.loading = 'lazy';
+    }
+    if (styleCss) nextNode.style.cssText = styleCss;
+    if (domId) nextNode.dataset.ntDomId = domId;
+    if (liveMediaPath) nextNode.dataset.liveMedia = liveMediaPath;
+    t.replaceWith(nextNode);
+    if (nextNode.tagName === 'VIDEO') {
+      nextNode.muted = true;
+      nextNode.play().catch(() => {});
+    }
+    return nextNode;
+  }
 
   function placeDomInsertedNode(regionRoot, op, newEl) {
     const anchor = op.targetSel ? resolveDomTarget(regionRoot, op.targetSel) : null;
@@ -2613,13 +2736,24 @@
             }
           }
         } else if (op.op === 'set_attr') {
-          const t = resolveDomTarget(regionRoot, op.targetSel);
+          let t = resolveDomTarget(regionRoot, op.targetSel);
           if (t && op.attrs && typeof op.attrs === 'object') {
+            if ('src' in op.attrs) {
+              const rawSrc = String(op.attrs.src || '').trim();
+              if (rawSrc && !/^\s*javascript:/i.test(rawSrc)) {
+                t = applyDomMediaSwap(t, rawSrc, op.attrs.alt);
+              }
+            }
             for (const [k, v] of Object.entries(op.attrs)) {
+              if (k === 'src') continue;
               if (!ALLOWED_DOM_ATTR_NAMES.has(k)) continue;
-              if ((k === 'href' || k === 'src') && /^\s*javascript:/i.test(String(v || ''))) continue;
-              if (v === '' || v === null || v === undefined) t.removeAttribute(k);
-              else t.setAttribute(k, String(v));
+              if (k === 'href' && /^\s*javascript:/i.test(String(v || ''))) continue;
+              if (v === '' || v === null || v === undefined) {
+                t.removeAttribute(k);
+              } else {
+                t.setAttribute(k, String(v));
+                if (k === 'alt' && t.tagName === 'VIDEO') t.setAttribute('aria-label', String(v));
+              }
             }
           }
         } else if (op.op === 'move_sibling') {
@@ -2670,14 +2804,15 @@
     if (el.matches('p')) return 'فقرة نصية';
     if (el.matches('li')) return 'بند قائمة';
     if (el.matches('article')) return 'بطاقة عنصر';
-    if (el.matches('section')) return 'قسم كامل';
-    if (el.matches('.photo-frame, figure, img')) return 'صورة';
+    if (el.matches('section')) return el.hasAttribute('data-live-bg-media') ? 'خلفية القسم (صورة/فيديو)' : 'قسم كامل';
+    if (el.matches('video, .nt-media-video, .nt-media-yt-wrap')) return 'فيديو';
+    if (el.matches('.photo-frame, figure, img')) return 'صورة / وسائط';
     if (el.matches('hr')) return 'فاصل';
     return `عنصر ${el.tagName.toLowerCase()}`;
   }
 
   const EL_INLINE_LEAF_SEL = 'nt-tx, span:not(.signature-points > span), em, strong, b, i, u, small, svg, path, circle, rect, line, polygon';
-  const EL_SEMANTIC_BLOCK_SEL = 'img, h1, h2, h3, h4, h5, h6, p, li, dt, dd, blockquote, a, button, label.cabin-radio-card, label.addon-select-card, label.field-group, label.spc-add-journey-lbl, label.check-field, div.nct-hl, div.nct-pcard, div.nct-dc-meals-row, .eyebrow, .photo-frame, article, details, figure, section, hr, div.field-group, div.three-notes > div, div.planner-benefits > div';
+  const EL_SEMANTIC_BLOCK_SEL = 'img, video, .nt-media-yt-wrap, .spc-photo, .card-photo, .tile-image, .signature-image, .about-image, .story-cover, .destination-photo, [data-live-media], [data-live-bg-media], h1, h2, h3, h4, h5, h6, p, li, dt, dd, blockquote, a, button, label.cabin-radio-card, label.addon-select-card, label.field-group, label.spc-add-journey-lbl, label.check-field, div.nct-hl, div.nct-pcard, div.nct-dc-meals-row, .eyebrow, .photo-frame, article, details, figure, section, hr, div.field-group, div.three-notes > div, div.planner-benefits > div';
 
   function resolveEditableElement(rawTarget) {
     if (!rawTarget) return null;
@@ -2685,7 +2820,11 @@
     if (!start || !$('#app')?.contains(start)) return null;
     if (start.closest(LIVE_CHROME_SEL) || start.closest('dialog, .adm-shell, #cms-toast')) return null;
     let el = start;
-    if (el.matches(EL_INLINE_LEAF_SEL) && !el.hasAttribute('data-live-item')) {
+    if (el.matches?.('.tile-shade, .nct-hero-shade, .page-hero-shade, .hero-gradient, .closing-banner-shade, .hero-video-wrap, .hero-bg-video')) {
+      const host = el.closest('.hero-home, .nct-hero, .page-hero, .closing-banner, .tile, .experience-tile, [data-live-bg-media]');
+      if (host && $('#app').contains(host)) el = host;
+    }
+    if (el.matches(EL_INLINE_LEAF_SEL) && !el.hasAttribute('data-live-item') && !el.hasAttribute('data-live-media')) {
       const parentItem = el.closest('[data-live-item]');
       const sem = el.closest(EL_SEMANTIC_BLOCK_SEL);
       el = (sem && $('#app').contains(sem)) ? sem : (parentItem || el);
@@ -2711,7 +2850,7 @@
     { key: 'button', icon: '🔘', label: 'زر إجراء', html: '<a href="#/plan-your-journey" class="button btn-gold nt-blk-btn" style="margin:8px 0">استكشف التفاصيل<span aria-hidden="true">↗</span></a>' },
     { key: 'badge', icon: '🏷', label: 'شارة', html: '<span class="eyebrow nt-blk-badge" style="margin:6px 0"><span class="eyebrow-mark"></span>شارة مميزة جديدة</span>' },
     { key: 'card', icon: '📦', label: 'بطاقة ميزة', html: '<div class="nct-hl nt-blk-card"><div class="nct-hl-icon">✦</div><b>ميزة إضافية جديدة</b><small>وصف مختصر يوضح قيمة التجربة للزائر.</small></div>' },
-    { key: 'image', icon: '🖼', label: 'إطار صورة', html: '<figure class="photo-frame nt-blk-img" style="margin:14px 0"><img src="assets/nile-sailing.webp" alt="Nile Sailing Image" loading="lazy"></figure>' },
+    { key: 'image', icon: '🖼', label: 'صورة / فيديو', html: '<figure class="photo-frame nt-blk-img" style="margin:14px 0"><img src="assets/nile-sailing.webp" alt="Nile Sailing Media" loading="lazy"></figure>' },
     { key: 'divider', icon: '➖', label: 'فاصل', html: '<hr class="nt-blk-divider" style="border:0;border-top:1px solid rgba(199,163,106,0.45);margin:18px 0">' }
   ];
 
@@ -2727,11 +2866,69 @@
     return '#' + m.slice(0, 3).map(n => Math.max(0, Math.min(255, Number(n))).toString(16).padStart(2, '0')).join('');
   }
 
-  function findPrimaryImage(el) {
+  function getMediaNodeSrc(node) {
+    if (!node) return '';
+    if (node.dataset?.liveBgMedia !== undefined || node.dataset?.bgSrc !== undefined) return node.dataset.bgSrc || '';
+    if (node.classList?.contains('nt-media-yt-wrap')) return node.dataset.mediaSrc || '';
+    if (node.tagName === 'VIDEO') return node.getAttribute('src') || node.querySelector('source')?.getAttribute('src') || '';
+    if (node.tagName === 'IMG') return node.getAttribute('src') || '';
+    return '';
+  }
+
+  function findPrimaryMedia(el) {
     if (!el) return null;
-    if (el.tagName === 'IMG') return el;
+    if (el.hasAttribute?.('data-live-bg-media') || el.matches?.('.page-hero, .hero-home, .nct-hero, .closing-banner')) {
+      return {
+        node: el,
+        isBg: true,
+        livePath: el.dataset?.liveBgMedia || '',
+        src: el.dataset?.bgSrc || '',
+        alt: ''
+      };
+    }
+    if (el.matches?.('img, video, .nt-media-yt-wrap')) {
+      return {
+        node: el,
+        isBg: false,
+        livePath: el.dataset?.liveMedia || '',
+        src: getMediaNodeSrc(el),
+        alt: el.getAttribute('alt') || el.getAttribute('aria-label') || ''
+      };
+    }
     if (el.matches('section, article.page-shell')) return null;
-    return el.querySelector('img');
+    const node = el.querySelector('[data-live-media], img, video, .nt-media-yt-wrap');
+    if (node) {
+      return {
+        node,
+        isBg: false,
+        livePath: node.dataset?.liveMedia || '',
+        src: getMediaNodeSrc(node),
+        alt: node.getAttribute('alt') || node.getAttribute('aria-label') || ''
+      };
+    }
+    const bgNode = el.querySelector('[data-live-bg-media]');
+    if (bgNode) {
+      return {
+        node: bgNode,
+        isBg: true,
+        livePath: bgNode.dataset?.liveBgMedia || '',
+        src: bgNode.dataset?.bgSrc || '',
+        alt: ''
+      };
+    }
+    return null;
+  }
+
+  function renderInspectorThumbHtml(src) {
+    const val = String(src || '').trim();
+    const ytId = extractYoutubeId(val);
+    if (ytId) {
+      return `<div class="nt-insp-thumb is-yt">▶ فيديو YouTube (${esc(ytId)})</div>`;
+    }
+    if (isVideoMediaUrl(val)) {
+      return `<video class="nt-insp-thumb" src="${esc(val)}" autoplay muted loop playsinline controls preload="metadata"></video>`;
+    }
+    return `<img class="nt-insp-thumb" src="${esc(val || IMG.sailing)}" alt="">`;
   }
 
   function findPrimaryLink(el) {
@@ -2905,9 +3102,9 @@
     const adm = window.NileTrailsAdmin;
     const cs = getComputedStyle(el);
     const kind = inferElementKindLabel(el);
-    const imgEl = findPrimaryImage(el);
+    const mediaInfo = findPrimaryMedia(el);
     const linkEl = findPrimaryLink(el);
-    const hasMedia = Boolean(imgEl || linkEl);
+    const hasMedia = Boolean(mediaInfo || linkEl);
     const tab = (initialTab === 'media' && !hasMedia) ? 'style' : initialTab;
     insp.dataset.activeTab = tab;
 
@@ -2925,7 +3122,7 @@
         <strong>🎨 خصائص: ${esc(kind)}</strong>
         <div class="nt-insp-tabs" role="tablist">
           <button type="button" class="${tab === 'style' ? 'is-on' : ''}" data-insp-tab="style">تنسيق</button>
-          ${hasMedia ? `<button type="button" class="${tab === 'media' ? 'is-on' : ''}" data-insp-tab="media">${imgEl ? 'صورة' : 'رابط'}</button>` : ''}
+          ${hasMedia ? `<button type="button" class="${tab === 'media' ? 'is-on' : ''}" data-insp-tab="media">${mediaInfo ? 'صورة / فيديو' : 'رابط'}</button>` : ''}
           <button type="button" class="${tab === 'insert' ? 'is-on' : ''}" data-insp-tab="insert">+ إدراج</button>
         </div>
         <button type="button" class="nt-insp-close" data-insp-close title="إغلاق اللوحة">✕</button>
@@ -2981,17 +3178,30 @@
 
       ${hasMedia ? `
       <div class="nt-insp-body" data-insp-panel="media" ${tab === 'media' ? '' : 'hidden'}>
-        ${imgEl ? `
+        ${mediaInfo ? `
           <div class="nt-insp-row">
-            <label>رابط الصورة الحالية</label>
-            <img class="nt-insp-thumb" src="${esc(imgEl.getAttribute('src') || '')}" alt="">
-            <input type="text" id="nt-insp-img-src" value="${esc(imgEl.getAttribute('src') || '')}" placeholder="assets/... أو https://...">
-            <label style="margin-top:6px">وصف الصورة (Alt)</label>
-            <input type="text" id="nt-insp-img-alt" value="${esc(imgEl.getAttribute('alt') || '')}" placeholder="وصف مختصر للصورة">
+            <label>${mediaInfo.isBg ? 'خلفية القسم (صورة أو فيديو)' : 'الوسائط الحالية (صورة أو فيديو)'}</label>
+            <div id="nt-insp-preview-wrap">${renderInspectorThumbHtml(mediaInfo.src)}</div>
+            <label style="margin-top:6px">اختر من مكتبة الموقع (صور أو فيديو جاهز)</label>
+            <select id="nt-insp-media-preset">
+              <option value="">— اختر صورة أو فيديو من المكتبة —</option>
+              <optgroup label="🎬 فيديوهات جاهزة (Videos)">
+                ${(adm?.PRESET_VIDEOS || []).map(([lbl, u]) => `<option value="${esc(u)}" ${mediaInfo.src === u ? 'selected' : ''}>🎬 ${esc(lbl)}</option>`).join('')}
+              </optgroup>
+              <optgroup label="🖼 صور الموقع (Images)">
+                ${(adm?.PRESET_IMAGES || []).map(([lbl, u]) => `<option value="${esc(u)}" ${mediaInfo.src === u ? 'selected' : ''}>🖼 ${esc(lbl)}</option>`).join('')}
+              </optgroup>
+            </select>
+            <label style="margin-top:6px">أو ضع رابط صورة / فيديو / YouTube</label>
+            <input type="text" id="nt-insp-img-src" value="${esc(mediaInfo.src)}" placeholder="assets/... أو https://... أو رابط يوتيوب">
+            ${mediaInfo.isBg ? '' : `
+              <label style="margin-top:6px">وصف توضيحي (Alt)</label>
+              <input type="text" id="nt-insp-img-alt" value="${esc(mediaInfo.alt)}" placeholder="وصف مختصر للصورة أو الفيديو">
+            `}
             <div class="nt-insp-media-btns">
-              <input type="file" id="nt-insp-file" accept="image/*" hidden>
-              <button type="button" id="nt-insp-upload-btn">📤 رفع صورة من جهازك</button>
-              <button type="button" class="is-save" id="nt-insp-save-img">حفظ الصورة ✓</button>
+              <input type="file" id="nt-insp-file" accept="image/*,video/mp4,video/webm,video/quicktime,.mov,.m4v,.ogv" hidden>
+              <button type="button" id="nt-insp-upload-btn">📤 رفع صورة / فيديو</button>
+              <button type="button" class="is-save" id="nt-insp-save-img">حفظ الوسائط ✓</button>
             </div>
           </div>
         ` : ''}
@@ -3096,6 +3306,22 @@
         if (routePick.value) $('#nt-insp-href', insp).value = routePick.value;
       });
     }
+    const presetPick = $('#nt-insp-media-preset', insp);
+    const previewWrap = $('#nt-insp-preview-wrap', insp);
+    const srcInput = $('#nt-insp-img-src', insp);
+    if (presetPick && srcInput) {
+      presetPick.addEventListener('change', () => {
+        if (!presetPick.value) return;
+        srcInput.value = presetPick.value;
+        if (previewWrap) previewWrap.innerHTML = renderInspectorThumbHtml(presetPick.value);
+      });
+    }
+    if (srcInput) {
+      srcInput.addEventListener('input', () => {
+        if (previewWrap) previewWrap.innerHTML = renderInspectorThumbHtml(srcInput.value.trim());
+      });
+    }
+
     const uploadBtn = $('#nt-insp-upload-btn', insp);
     const fileInput = $('#nt-insp-file', insp);
     if (uploadBtn && fileInput) {
@@ -3108,33 +3334,44 @@
         try {
           const url = await adm?.uploadMediaFile?.(f);
           if (url) {
-            $('#nt-insp-img-src', insp).value = url;
-            const thumb = $('.nt-insp-thumb', insp);
-            if (thumb) thumb.src = url;
+            if (srcInput) srcInput.value = url;
+            if (previewWrap) previewWrap.innerHTML = renderInspectorThumbHtml(url);
             $('#nt-insp-save-img', insp)?.click();
           }
         } catch (err) {
-          adm?.showToast?.(err.message || 'فشل رفع الصورة', 'error');
+          adm?.showToast?.(err.message || 'فشل رفع الملف', 'error');
         } finally {
           uploadBtn.disabled = false;
-          uploadBtn.textContent = '📤 رفع صورة من جهازك';
+          uploadBtn.textContent = '📤 رفع صورة / فيديو';
         }
       });
     }
 
     $('#nt-insp-save-img', insp)?.addEventListener('click', async () => {
-      if (!imgEl) return;
-      const srcVal = $('#nt-insp-img-src', insp).value.trim();
-      const altVal = $('#nt-insp-img-alt', insp).value.trim();
+      if (!mediaInfo) return;
+      const srcVal = $('#nt-insp-img-src', insp)?.value?.trim();
+      const altVal = $('#nt-insp-img-alt', insp)?.value?.trim();
       if (!srcVal) return;
-      const payload = getDomTargetPayload(imgEl);
+      const isVid = isVideoMediaUrl(srcVal);
+      if (mediaInfo.livePath) {
+        captureStudioRestoreState(el, { openInspector: true, activeTab: 'media' });
+        await adm?.recordDomAttr?.({
+          livePath: mediaInfo.livePath,
+          liveVal: srcVal,
+          toastMsg: isVid ? 'تم تغيير الوسائط إلى فيديو بنجاح ✓' : 'تم تحديث الصورة بنجاح ✓'
+        }, () => route({ preserveScroll: true }));
+        return;
+      }
+      const payload = getDomTargetPayload(mediaInfo.node);
       if (!payload) return;
       captureStudioRestoreState(el, { openInspector: true, activeTab: 'media' });
+      const nextAttrs = { src: srcVal };
+      if (!mediaInfo.isBg && altVal !== undefined) nextAttrs.alt = altVal;
       await adm?.recordDomAttr?.({
         regionKey: payload.regionKey,
         targetSel: payload.targetSel,
-        attrs: { src: srcVal, alt: altVal },
-        toastMsg: 'تم تحديث الصورة بنجاح ✓'
+        attrs: nextAttrs,
+        toastMsg: isVid ? 'تم تغيير الوسائط إلى فيديو بنجاح ✓' : 'تم تحديث الصورة بنجاح ✓'
       }, () => route({ preserveScroll: true }));
     });
 
@@ -3196,7 +3433,7 @@
       <span class="nt-el-pin" id="nt-el-pin-lbl">👁 معاينة</span>
       <span class="nt-el-kind" id="nt-el-kind-lbl">عنصر</span>
       <button type="button" data-el-act="edit-text" id="nt-el-text-btn" title="تعديل النص مباشرة">✏️ نص</button>
-      <button type="button" data-el-act="edit-image" id="nt-el-img-btn" hidden title="تغيير أو رفع صورة">🖼 صورة</button>
+      <button type="button" data-el-act="edit-image" id="nt-el-img-btn" hidden title="تغيير أو رفع صورة أو فيديو">🖼 وسائط</button>
       <button type="button" data-el-act="edit-link" id="nt-el-link-btn" hidden title="تعديل الرابط">🔗 رابط</button>
       <button type="button" data-el-act="inspect" id="nt-el-insp-btn" aria-pressed="false" title="تنسيق الألوان والخط وإضافة عناصر">🎨 تنسيق</button>
       <button type="button" data-el-act="move-up" id="nt-el-up-btn" title="تحريك لأعلى/للخلف">▲</button>
@@ -3411,11 +3648,13 @@
     if (kindLbl) kindLbl.textContent = inferElementKindLabel(el);
 
     const imgBtn = $('#nt-el-img-btn', bar);
-    if (imgBtn) imgBtn.hidden = !findPrimaryImage(el);
+    if (imgBtn) imgBtn.hidden = !findPrimaryMedia(el);
     const linkBtn = $('#nt-el-link-btn', bar);
     if (linkBtn) linkBtn.hidden = !findPrimaryLink(el);
     const textBtn = $('#nt-el-text-btn', bar);
     if (textBtn) textBtn.hidden = !Boolean(el.textContent?.trim());
+    const delBtn = $('[data-el-act="delete"]', bar);
+    if (delBtn) delBtn.hidden = (el.dataset?.liveMedia === 'settings.brandLogo');
 
     const hideBtn = $('#nt-el-hide-btn', bar);
     if (hideBtn) {
@@ -3503,7 +3742,7 @@
       const cand = resolveEditableElement(e.target);
       if (subMode === 'select') {
         if (e.target.closest?.('[data-live-text], [data-utx-key]')) return;
-        if (e.target.closest?.(SELECT_MODE_PASSTHROUGH_SEL)) return;
+        if (e.target.closest?.(SELECT_MODE_PASSTHROUGH_SEL) && !e.target.matches?.('img, video, .nt-media-yt-wrap')) return;
         if (e.target.closest?.('header.site-header nav a') && !cand?.classList?.contains('button')) return;
         if (!cand) {
           if (studioLocked) hideElementStudioBar();
@@ -4383,8 +4622,8 @@
       }
     }
 
-    // Ensure all background videos play smoothly
-    $$('.hero-bg-video').forEach(v => {
+    // Ensure all background & card videos play smoothly
+    $$('.hero-bg-video, .nt-media-video').forEach(v => {
       v.muted = true;
       v.play().catch(() => {});
     });

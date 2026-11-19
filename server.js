@@ -27,10 +27,14 @@ const MIME_TYPES = {
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
   '.gif': 'image/gif',
+  '.avif': 'image/avif',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.mp4': 'video/mp4',
+  '.m4v': 'video/mp4',
+  '.mov': 'video/quicktime',
   '.webm': 'video/webm',
+  '.ogv': 'video/ogg',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',
@@ -489,14 +493,14 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       try {
-        const body = await readBody(req, 15 * 1024 * 1024);
+        const body = await readBody(req, 60 * 1024 * 1024);
         const parsed = JSON.parse(body || '{}');
         const rawName = String(parsed.filename || 'upload.jpg');
         const ext = path.extname(rawName).toLowerCase();
         // Exclude .svg to prevent stored XSS on same origin
-        const allowed = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.mp4', '.webm']);
+        const allowed = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif', '.mp4', '.m4v', '.mov', '.webm', '.ogv']);
         if (!allowed.has(ext)) {
-          sendJson(res, 400, { error: 'Unsupported media file type (allowed: PNG, JPG, WEBP, GIF, MP4, WEBM)' });
+          sendJson(res, 400, { error: 'Unsupported media file type (allowed: PNG, JPG, WEBP, GIF, AVIF, MP4, WEBM, MOV, OGV)' });
           return;
         }
         const cleanBase = path.basename(rawName, ext).toLowerCase().replace(/[^a-z0-9-_]+/g, '-').slice(0, 48) || 'media';

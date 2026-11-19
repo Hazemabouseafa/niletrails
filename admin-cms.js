@@ -46,7 +46,8 @@ window.NileTrailsAdmin = (() => {
     ['Luxury Nile Cruise Ship', 'assets/nile-cruise.webp'],
     ['Karnak Temple Complex', 'assets/sight-karnak.jpg'],
     ['Temple of Hatshepsut', 'assets/sight-hatshepsut.jpg'],
-    ['Valley of the Queens', 'assets/sight-queens.jpg']
+    ['Valley of the Queens', 'assets/sight-queens.jpg'],
+    ['NileTrails Logo (Default)', 'assets/niletrails-logo.png']
   ];
 
   const MAX_HISTORY = 25;
@@ -95,7 +96,7 @@ window.NileTrailsAdmin = (() => {
     'obsidian-gold': { label: 'Obsidian Night', navy: '#141923', gold: '#d4af6a', cream: '#f8f7f4', fontScale: 1, radius: 2 }
   };
 
-  function resolvePathContainer(root, rawPath) {
+  function resolvePathContainer(root, rawPath, createMissing = false) {
     const parts = [];
     const re = /([^.[\]]+)|\[([^\]]+)\]/g;
     let m;
@@ -107,6 +108,10 @@ window.NileTrailsAdmin = (() => {
       if (cur == null) return null;
       const seg = parts[i];
       if (typeof seg === 'string') {
+        if (seg === '__proto__' || seg === 'constructor' || seg === 'prototype') return null;
+        if (cur[seg] == null && createMissing) {
+          cur[seg] = typeof parts[i + 1] === 'string' ? {} : [];
+        }
         cur = cur[seg];
       } else if (Array.isArray(cur)) {
         const [fk, fv] = seg.filter.split('=');
@@ -119,14 +124,15 @@ window.NileTrailsAdmin = (() => {
   }
 
   function getPathValue(root, rawPath) {
-    const res = resolvePathContainer(root, rawPath);
+    const res = resolvePathContainer(root, rawPath, false);
     if (!res || typeof res.key !== 'string') return undefined;
     return res.container[res.key];
   }
 
   function setPathValue(root, rawPath, value) {
-    const res = resolvePathContainer(root, rawPath);
+    const res = resolvePathContainer(root, rawPath, true);
     if (!res || typeof res.key !== 'string') return false;
+    if (res.key === '__proto__' || res.key === 'constructor' || res.key === 'prototype') return false;
     res.container[res.key] = value;
     return true;
   }
@@ -389,7 +395,7 @@ window.NileTrailsAdmin = (() => {
   }
 
   async function recordDomAttr(payload, onDone = null) {
-    if (!payload || !payload.regionKey || !payload.targetSel) return null;
+    if (!payload || (!(payload.livePath && payload.liveVal !== undefined) && (!payload.regionKey || !payload.targetSel))) return null;
     const st = CMS.getState();
     const beforeSnap = captureSnapshot();
     if (payload.livePath && payload.liveVal !== undefined) {
@@ -494,6 +500,32 @@ window.NileTrailsAdmin = (() => {
     ['فيديو 6 — الدهبية والنوبة 2 (Dahabiya 2)', 'assets/videos/hero-dahabiya-2.mp4'],
     ['رابط يوتيوب (YouTube Autoplay)', 'https://www.youtube.com/watch?v=otvczRRDdRI']
   ];
+
+  const extractYoutubeId = (src) => {
+    const m = String(src || '').trim().match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([A-Za-z0-9_-]{11})/i);
+    return m ? m[1] : '';
+  };
+
+  const isVideoMediaUrl = (src) => {
+    const s = String(src || '').trim();
+    if (!s) return false;
+    if (/\.(mp4|webm|mov|m4v|ogv)(\?|#|$)/i.test(s)) return true;
+    if (extractYoutubeId(s)) return true;
+    if (/^data:video\//i.test(s)) return true;
+    return false;
+  };
+
+  function renderMediaThumbHtml(val, fallbackImg = 'assets/nile-sailing.webp', cls = 'adm-media-thumb') {
+    const clean = String(val || '').trim();
+    const yt = extractYoutubeId(clean);
+    if (yt) {
+      return `<div class="${cls} is-vid" title="${esc(clean)}">▶<span>YouTube</span></div>`;
+    }
+    if (isVideoMediaUrl(clean)) {
+      return `<video src="${esc(clean)}" class="${cls} is-vid" muted autoplay loop playsinline preload="metadata" title="${esc(clean)}"></video>`;
+    }
+    return `<img src="${esc(clean || fallbackImg)}" alt="" class="${cls}">`;
+  }
 
   const FAQ_SCOPES = [
     ['all', 'كل الصفحات (عام)'],
@@ -695,26 +727,25 @@ window.NileTrailsAdmin = (() => {
 
   function mediaFieldHtml(name, labelText, currentVal = '', isVideo = false) {
     const val = currentVal || '';
-    const presets = isVideo ? PRESET_VIDEOS : PRESET_IMAGES;
-    const thumbHtml = isVideo
-      ? `<div class="adm-media-thumb is-vid" title="${esc(val)}">🎬<span>MP4</span></div>`
-      : `<img src="${esc(val || 'assets/nile-sailing.webp')}" alt="" class="adm-media-thumb">`;
+    const imgGroup = `<optgroup label="🖼 صور من المكتبة">${PRESET_IMAGES.map(([lbl, path]) => `<option value="${esc(path)}" ${val === path ? 'selected' : ''}>${esc(lbl)}</option>`).join('')}</optgroup>`;
+    const vidGroup = `<optgroup label="🎬 فيديوهات جاهزة (تشغيل تلقائي)">${PRESET_VIDEOS.map(([lbl, path]) => `<option value="${esc(path)}" ${val === path ? 'selected' : ''}>${esc(lbl)}</option>`).join('')}</optgroup>`;
+    const groupedOptions = isVideo ? (vidGroup + imgGroup) : (imgGroup + vidGroup);
 
     return `
       <div class="adm-media-field">
-        <span class="adm-field-lbl">${esc(labelText)}</span>
+        <span class="adm-field-lbl">${esc(labelText)} <small style="font-weight:600;color:#64748b">(يدعم صورة أو فيديو MP4 / يوتيوب)</small></span>
         <div class="adm-media-control-row">
-          ${thumbHtml}
+          <div class="adm-media-thumb-wrap">${renderMediaThumbHtml(val)}</div>
           <div class="adm-media-inputs">
-            <input type="text" name="${esc(name)}" value="${esc(val)}" placeholder="${isVideo ? 'assets/videos/... أو رابط يوتيوب' : 'assets/... أو رابط صورة'}" class="adm-media-url-input" dir="ltr">
+            <input type="text" name="${esc(name)}" value="${esc(val)}" placeholder="assets/... أو رابط صورة أو فيديو MP4 / يوتيوب" class="adm-media-url-input" dir="ltr">
             <div class="adm-media-tools">
-              <select class="adm-media-preset-select" aria-label="اختيار ملف جاهز">
-                <option value="">-- اختيار سريع من المكتبة --</option>
-                ${presets.map(([lbl, path]) => `<option value="${esc(path)}" ${val === path ? 'selected' : ''}>${esc(lbl)}</option>`).join('')}
+              <select class="adm-media-preset-select" aria-label="اختيار صورة أو فيديو جاهز">
+                <option value="">-- اختيار صورة أو فيديو جاهز --</option>
+                ${groupedOptions}
               </select>
               <label class="adm-upload-btn">
-                <input type="file" accept="${isVideo ? 'video/mp4,video/webm' : 'image/*'}" class="adm-file-upload-input" hidden>
-                <span>⬆ رفع من الجهاز</span>
+                <input type="file" accept="image/*,video/mp4,video/webm,video/quicktime" class="adm-file-upload-input" hidden>
+                <span>⬆ رفع صورة أو فيديو</span>
               </label>
             </div>
           </div>
@@ -728,20 +759,30 @@ window.NileTrailsAdmin = (() => {
       const urlInput = $('.adm-media-url-input', wrap);
       const presetSel = $('.adm-media-preset-select', wrap);
       const fileInp = $('.adm-file-upload-input', wrap);
-      const thumbImg = $('img.adm-media-thumb', wrap);
+      const thumbWrap = $('.adm-media-thumb-wrap', wrap);
 
       const syncThumb = (url) => {
-        if (thumbImg && url) thumbImg.src = url;
+        if (thumbWrap) {
+          thumbWrap.innerHTML = renderMediaThumbHtml(url);
+          const v = thumbWrap.querySelector('video');
+          if (v) { v.muted = true; v.play().catch(() => {}); }
+        }
+      };
+
+      const commitUrl = (url, msg) => {
+        if (urlInput) {
+          urlInput.value = url;
+          urlInput.dispatchEvent(new Event('input', { bubbles: true }));
+          urlInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        syncThumb(url);
+        if (msg) showToast(msg);
       };
 
       urlInput?.addEventListener('input', () => syncThumb(urlInput.value.trim()));
 
       presetSel?.addEventListener('change', () => {
-        if (presetSel.value && urlInput) {
-          urlInput.value = presetSel.value;
-          syncThumb(presetSel.value);
-          showToast('تم تحديد الملف من المكتبة');
-        }
+        if (presetSel.value) commitUrl(presetSel.value, 'تم تحديد الوسائط من المكتبة');
       });
 
       fileInp?.addEventListener('change', async () => {
@@ -750,9 +791,7 @@ window.NileTrailsAdmin = (() => {
         try {
           showToast('جاري رفع الملف...');
           const uploadedUrl = await uploadMediaFile(file);
-          if (urlInput) urlInput.value = uploadedUrl;
-          syncThumb(uploadedUrl);
-          showToast('تم رفع الملف وحفظ مساره بنجاح');
+          commitUrl(uploadedUrl, 'تم رفع الصورة أو الفيديو وحفظ مساره بنجاح ✓');
         } catch (err) {
           showToast(err.message || 'تعذر رفع الملف', 'error');
         }
@@ -944,7 +983,7 @@ window.NileTrailsAdmin = (() => {
           </div>
           ${visibleVessels.length ? visibleVessels.map(item => `
             <div class="adm-vessel-item ${item.id === v?.id ? 'active' : ''}" data-select-vessel="${esc(item.id)}">
-              <img src="${esc(item.image || 'assets/nile-cruise.webp')}" alt="">
+              ${renderMediaThumbHtml(item.image, 'assets/nile-cruise.webp', 'adm-cc-thumb')}
               <div class="adm-vi-body">
                 <strong>${esc(item.title)}</strong>
                 <span class="adm-vi-meta">${item.kind === 'dahabiya' ? 'ذهبية' : 'كروز'} · ${esc(item.tier)} · ${(item.programs || []).length} برامج</span>
@@ -1417,7 +1456,7 @@ window.NileTrailsAdmin = (() => {
         ${filtered.map(({ pl, idx }) => `
           <article class="adm-compact-card ${pl.enabled === false ? 'is-off' : ''}">
             <div class="adm-cc-head">
-              <img src="${esc(pl.image || 'assets/egypt-temple.webp')}" alt="" class="adm-cc-thumb">
+              ${renderMediaThumbHtml(pl.image, 'assets/egypt-temple.webp', 'adm-cc-thumb')}
               <div class="adm-cc-info">
                 <span class="pill home">${esc(pl.location)}</span>
                 <h4>${esc(pl.title)}</h4>
@@ -1521,7 +1560,7 @@ window.NileTrailsAdmin = (() => {
         ${addons.map((ad, idx) => `
           <article class="adm-compact-card ${ad.enabled === false ? 'is-off' : ''}">
             <div class="adm-cc-head">
-              <img src="${esc(ad.image || 'assets/egypt-temple.webp')}" alt="" class="adm-cc-thumb">
+              ${renderMediaThumbHtml(ad.image, 'assets/egypt-temple.webp', 'adm-cc-thumb')}
               <div class="adm-cc-info">
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
                   <span class="pill home">${esc(ad.category)}</span>
@@ -1767,7 +1806,7 @@ window.NileTrailsAdmin = (() => {
           <div class="adm-list-header">الصفحات (${pages.length})</div>
           ${!pages.length ? '<p class="muted" style="padding:16px">لا توجد صفحات بعد.</p>' : pages.map(item => `
             <div class="adm-vessel-item ${item.id === pg?.id ? 'active' : ''}" data-select-page="${esc(item.id)}">
-              <img src="${esc(item.heroImage || 'assets/egypt-temple.webp')}" alt="">
+              ${renderMediaThumbHtml(item.heroImage, 'assets/egypt-temple.webp', 'adm-cc-thumb')}
               <div style="min-width:0;flex:1">
                 <strong>${esc(item.title)}</strong>
                 <span dir="ltr">/page/${esc(item.slug)}</span>
@@ -2678,7 +2717,70 @@ window.NileTrailsAdmin = (() => {
       return;
     }
 
-    // Design System Studio (Colors, Presets, Font Scale, Radius with instant live preview)
+    // Dedicated Logo Editor & Uploader
+    if (targetId === 'logo') {
+      openSlideDrawer({
+        title: 'تعديل ورفع شعار الموقع (Brand Logo)',
+        subtitle: 'ارفع صورة اللوجو من جهازك بصيغة (PNG شفاف أو SVG أو WebP) ليتم تحديثه فوراً في كامل الموقع',
+        bodyHtml: `
+          <form id="live-sec-form" class="adm-drawer-form">
+            <div class="adm-form-grid">
+              <div class="full-col">
+                ${mediaFieldHtml('brandLogo', 'شعار الموقع (Logo)', s.brandLogo || 'assets/niletrails-logo.png', false)}
+              </div>
+              <label>اسم الموقع (Brand Name)
+                <input type="text" name="brandName" value="${esc(s.brandName || 'NileTrails')}">
+              </label>
+              <label>الشعار المختصر (Tagline)
+                <input type="text" name="tagline" value="${esc(s.tagline || '')}">
+              </label>
+            </div>
+            <div style="margin-top:16px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px">
+              <span class="adm-field-lbl" style="margin-bottom:10px;display:block">معاينة اللوجو المباشرة على خلفيات الموقع:</span>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div style="background:#0b2638;padding:16px;border-radius:8px;text-align:center">
+                  <small style="color:#94a3b8;display:block;margin-bottom:8px">خلفية الهيدر والفوتر الداكنة</small>
+                  <img id="logo-preview-dark" src="${esc(s.brandLogo || 'assets/niletrails-logo.png')}" alt="Dark Header Preview" style="height:42px;width:auto;max-width:170px;object-fit:contain">
+                </div>
+                <div style="background:#fcfaf6;padding:16px;border-radius:8px;text-align:center;border:1px solid #e2e8f0">
+                  <small style="color:#64748b;display:block;margin-bottom:8px">خلفية الصفحات الفاتحة</small>
+                  <img id="logo-preview-light" src="${esc(s.brandLogo || 'assets/niletrails-logo.png')}" alt="Light Surface Preview" style="height:42px;width:auto;max-width:170px;object-fit:contain">
+                </div>
+              </div>
+            </div>
+          </form>
+        `,
+        footerHtml: `<button type="button" class="adm-btn-outline" id="btn-live-cancel">إلغاء</button><button type="submit" form="live-sec-form" class="adm-btn-gold">حفظ وتحديث اللوجو ✓</button>`,
+        onOpen: (dlg) => {
+          $('#btn-live-cancel', dlg)?.addEventListener('click', () => dlg.close());
+          const logoInp = dlg.querySelector('[name="brandLogo"]');
+          const pDark = $('#logo-preview-dark', dlg);
+          const pLight = $('#logo-preview-light', dlg);
+          const syncPrevs = () => {
+            const v = logoInp?.value?.trim();
+            if (v) {
+              if (pDark) pDark.src = v;
+              if (pLight) pLight.src = v;
+            }
+          };
+          logoInp?.addEventListener('input', syncPrevs);
+          logoInp?.addEventListener('change', syncPrevs);
+          $('#live-sec-form', dlg)?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fd = new FormData(e.target);
+            s.brandLogo = fd.get('brandLogo') || s.brandLogo;
+            s.brandName = fd.get('brandName') || s.brandName;
+            s.tagline = fd.get('tagline') || s.tagline;
+            st.settings = s;
+            dlg.close();
+            await commitAndFinish('تم تحديث وحفظ لوجو الموقع بنجاح ✓');
+          });
+        }
+      });
+      return;
+    }
+
+    // Design System Studio (Colors, Presets, Logo, Font Scale, Radius with instant live preview)
     if (targetId === 'theme') {
       const th = { navy: '#0d2a3a', gold: '#c7a36a', cream: '#fcfaf6', fontScale: 1, radius: 2, preset: 'royal-navy', ...(s.theme || {}) };
       const applyPreviewCss = (next) => {
@@ -2692,41 +2794,71 @@ window.NileTrailsAdmin = (() => {
       let committed = false;
 
       openSlideDrawer({
-        title: 'استوديو التصميم والألوان والخطوط (Design System)',
-        subtitle: 'معاينة فورية حية على الموقع قبل الحفظ — أو اختر طابعاً جاهزاً بضغطة واحدة',
+        title: 'استوديو الهوية والألوان وشعار الموقع (Brand & Theme Studio)',
+        subtitle: 'تعديل ورفع لوجو الموقع، وتخصيص ألوان العلامة التجارية مع معاينة حية فورية',
         bodyHtml: `
           <form id="live-sec-form" class="adm-drawer-form">
-            <div class="adm-theme-presets">
-              <span class="adm-field-lbl" style="grid-column:1/-1">قوالب ألوان فاخرة بضغطة واحدة (Presets)</span>
-              ${Object.entries(LUXURY_THEME_PRESETS).map(([k, p]) => `
-                <button type="button" class="adm-preset-chip ${th.preset === k ? 'is-selected' : ''}" data-theme-preset="${k}">
-                  <span class="adm-preset-dots">
-                    <i style="background:${p.navy}"></i>
-                    <i style="background:${p.gold}"></i>
-                    <i style="background:${p.cream};border:1px solid #ccc"></i>
-                  </span>
-                  <span>${esc(p.label)}</span>
-                </button>
-              `).join('')}
+            <div class="adm-drawer-section">
+              <div class="adm-drawer-sec-head">
+                <h4>1. شعار وهوية الموقع (Brand Logo)</h4>
+                <small style="color:#64748b">ارفع لوجو جديد من جهازك أو اختر من المكتبة</small>
+              </div>
+              <div class="full-col">
+                ${mediaFieldHtml('brandLogo', 'صورة اللوجو (يدعم PNG شفاف، WebP، أو SVG)', s.brandLogo || 'assets/niletrails-logo.png', false)}
+              </div>
+              <div style="margin-top:12px;display:flex;align-items:center;gap:14px;background:#0b2638;padding:12px 16px;border-radius:10px;border:1px solid rgba(199,163,106,0.35)">
+                <img id="theme-logo-preview" src="${esc(s.brandLogo || 'assets/niletrails-logo.png')}" alt="Logo Preview" style="height:38px;width:auto;max-width:180px;object-fit:contain;background:rgba(255,255,255,0.08);padding:4px 8px;border-radius:6px">
+                <div style="color:#e2edf3;font-size:12px">
+                  <strong style="display:block;color:#fff">معاينة الشعار على خلفية الهيدر</strong>
+                  <span style="color:#94a3b8">يتم تحديث الشعار فوراً في الهيدر والفوتر ولكل الزوار</span>
+                </div>
+              </div>
             </div>
-            <hr class="adm-sep">
-            <div class="adm-form-grid">
-              ${renderSchemaFieldHtml({ key: 'navy', label: 'اللون الأساسي الكحلي (Primary)', type: 'color', full: true }, th.navy)}
-              ${renderSchemaFieldHtml({ key: 'gold', label: 'اللون الذهبي المميز (Accent)', type: 'color', full: true }, th.gold)}
-              ${renderSchemaFieldHtml({ key: 'cream', label: 'خلفية الصفحات الفاتحة (Surface)', type: 'color', full: true }, th.cream)}
-              <label class="full-col">حجم الخط العام للموقع (<span id="lbl-font-scale">${Math.round((Number(th.fontScale) || 1) * 100)}%</span>)
-                <input type="range" name="fontScale" min="0.90" max="1.14" step="0.02" value="${Number(th.fontScale) || 1}">
-              </label>
-              <label class="full-col">استدارة الأزرار والكروت (<span id="lbl-radius-val">${Number(th.radius ?? 2)}px</span>)
-                <input type="range" name="radius" min="0" max="16" step="2" value="${Number(th.radius ?? 2)}">
-              </label>
+
+            <div class="adm-drawer-section" style="margin-top:14px">
+              <div class="adm-drawer-sec-head">
+                <h4>2. ألوان وهوية الموقع (Color Palette)</h4>
+              </div>
+              <div class="adm-theme-presets">
+                <span class="adm-field-lbl" style="grid-column:1/-1">قوالب ألوان فاخرة بضغطة واحدة (Presets)</span>
+                ${Object.entries(LUXURY_THEME_PRESETS).map(([k, p]) => `
+                  <button type="button" class="adm-preset-chip ${th.preset === k ? 'is-selected' : ''}" data-theme-preset="${k}">
+                    <span class="adm-preset-dots">
+                      <i style="background:${p.navy}"></i>
+                      <i style="background:${p.gold}"></i>
+                      <i style="background:${p.cream};border:1px solid #ccc"></i>
+                    </span>
+                    <span>${esc(p.label)}</span>
+                  </button>
+                `).join('')}
+              </div>
+              <hr class="adm-sep">
+              <div class="adm-form-grid">
+                ${renderSchemaFieldHtml({ key: 'navy', label: 'اللون الأساسي الكحلي (Primary)', type: 'color', full: true }, th.navy)}
+                ${renderSchemaFieldHtml({ key: 'gold', label: 'اللون الذهبي المميز (Accent)', type: 'color', full: true }, th.gold)}
+                ${renderSchemaFieldHtml({ key: 'cream', label: 'خلفية الصفحات الفاتحة (Surface)', type: 'color', full: true }, th.cream)}
+                <label class="full-col">حجم الخط العام للموقع (<span id="lbl-font-scale">${Math.round((Number(th.fontScale) || 1) * 100)}%</span>)
+                  <input type="range" name="fontScale" min="0.90" max="1.14" step="0.02" value="${Number(th.fontScale) || 1}">
+                </label>
+                <label class="full-col">استدارة الأزرار والكروت (<span id="lbl-radius-val">${Number(th.radius ?? 2)}px</span>)
+                  <input type="range" name="radius" min="0" max="16" step="2" value="${Number(th.radius ?? 2)}">
+                </label>
+              </div>
+              <input type="hidden" name="preset" value="${esc(th.preset || 'royal-navy')}">
+              <button type="button" id="btn-reset-theme" class="adm-btn-outline-sm" style="margin-top:14px">↺ استعادة ألوان NileTrails الأصلية</button>
             </div>
-            <input type="hidden" name="preset" value="${esc(th.preset || 'royal-navy')}">
-            <button type="button" id="btn-reset-theme" class="adm-btn-outline-sm" style="margin-top:14px">↺ استعادة ألوان NileTrails الأصلية</button>
           </form>
         `,
-        footerHtml: `<button type="button" class="adm-btn-outline" id="btn-live-cancel">إلغاء</button><button type="submit" form="live-sec-form" class="adm-btn-gold">حفظ وتطبيق الهوية ✓</button>`,
+        footerHtml: `<button type="button" class="adm-btn-outline" id="btn-live-cancel">إلغاء</button><button type="submit" form="live-sec-form" class="adm-btn-gold">حفظ وتطبيق الهوية واللوجو ✓</button>`,
         onOpen: (dlg) => {
+          const logoInp = dlg.querySelector('[name="brandLogo"]');
+          const logoPrev = $('#theme-logo-preview', dlg);
+          const syncLogo = () => {
+            if (logoPrev && logoInp?.value) logoPrev.src = logoInp.value;
+          };
+          logoInp?.addEventListener('input', syncLogo);
+          logoInp?.addEventListener('change', syncLogo);
+
           const readForm = () => ({
             navy: dlg.querySelector('[name="navy"]').value,
             gold: dlg.querySelector('[name="gold"]').value,
@@ -2782,11 +2914,14 @@ window.NileTrailsAdmin = (() => {
           $('#btn-live-cancel', dlg)?.addEventListener('click', () => dlg.close());
           $('#live-sec-form', dlg)?.addEventListener('submit', async (e) => {
             e.preventDefault();
+            const fd = new FormData(e.target);
+            const nextLogo = fd.get('brandLogo')?.toString().trim();
+            if (nextLogo) s.brandLogo = nextLogo;
             s.theme = readForm();
             st.settings = s;
             committed = true;
             dlg.close();
-            await commitAndFinish('تم حفظ وتطبيق هوية التصميم الجديدة ✓');
+            await commitAndFinish('تم حفظ وتطبيق هوية التصميم واللوجو بنجاح ✓');
           });
         }
       });
@@ -2851,11 +2986,17 @@ window.NileTrailsAdmin = (() => {
               <h3>الهيدر واللوجو والقائمة العلوية</h3>
               <p class="adm-card-sub">${esc(s.brandName)} · ${(s.hiddenNavKeys || []).length} قوائم مخفية · ${(s.customNavItems || []).length} روابط إضافية</p>
             </div>
-            <button type="button" class="adm-btn-gold-sm" data-edit-live-sec="header">${ADM_ICONS.edit}<span>تعديل الهيدر والقوائم</span></button>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button type="button" class="adm-btn-gold-sm" data-edit-live-sec="logo">${ADM_ICONS.edit}<span>تعديل ورفع اللوجو</span></button>
+              <button type="button" class="adm-btn-outline-sm" data-edit-live-sec="header">${ADM_ICONS.edit}<span>تعديل الهيدر والقوائم</span></button>
+            </div>
           </div>
-          <div style="display:flex;align-items:center;gap:14px">
-            <img src="${esc(s.brandLogo || 'assets/niletrails-logo.png')}" alt="Logo" style="height:44px;width:auto;background:#fcfaf6;padding:6px 10px;border-radius:4px;border:1px solid #dce2e8">
-            <small style="color:#5c727e">يمكنك تغيير صورة اللوجو، الأزرار العلوية، وإخفاء/تعديل أسماء القوائم.</small>
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <img src="${esc(s.brandLogo || 'assets/niletrails-logo.png')}" alt="Logo" style="height:46px;width:auto;max-width:180px;background:#0b2638;padding:6px 12px;border-radius:8px;border:1px solid #dce2e8;object-fit:contain">
+            <div style="flex:1;min-width:180px">
+              <small style="color:#5c727e;display:block">الشعار الحالي في الهيدر والفوتر. اضغط لرفع لوجو جديد من جهازك فوراً.</small>
+              <button type="button" class="adm-btn-primary-sm" data-edit-live-sec="logo" style="margin-top:6px">⬆ رفع وتغيير اللوجو</button>
+            </div>
           </div>
         </div>
 
@@ -2873,15 +3014,19 @@ window.NileTrailsAdmin = (() => {
         <div class="adm-card">
           <div class="adm-card-head">
             <div>
-              <h3>ألوان وهوية الموقع (Theme Palette)</h3>
-              <p class="adm-card-sub">تنعكس الألوان فوراً على الأزرار والعناوين والخلفيات</p>
+              <h3>ألوان وهوية الموقع واللوجو (Theme & Logo)</h3>
+              <p class="adm-card-sub">تعديل ورفع اللوجو، وتخصيص الألوان لتنعكس فوراً على كامل الموقع</p>
             </div>
-            <button type="button" class="adm-btn-gold-sm" data-edit-live-sec="theme">${ADM_ICONS.sitebuilder}<span>تعديل الألوان</span></button>
+            <button type="button" class="adm-btn-gold-sm" data-edit-live-sec="theme">${ADM_ICONS.sitebuilder}<span>تعديل الهوية واللوجو</span></button>
           </div>
-          <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
             <span class="pill" style="background:${esc(th.navy)};color:#fff">Navy: ${esc(th.navy)}</span>
             <span class="pill" style="background:${esc(th.gold)};color:#092434">Gold: ${esc(th.gold)}</span>
             <span class="pill" style="background:${esc(th.cream)};color:#092434;border:1px solid #ccc">Cream: ${esc(th.cream)}</span>
+            <span class="pill price" style="display:inline-flex;align-items:center;gap:6px">
+              <img src="${esc(s.brandLogo || 'assets/niletrails-logo.png')}" alt="" style="height:14px;width:auto">
+              <span>اللوجو</span>
+            </span>
           </div>
         </div>
 
@@ -2991,7 +3136,7 @@ window.NileTrailsAdmin = (() => {
         ${active.list.map((item, idx) => `
           <article class="adm-compact-card ${item.enabled === false ? 'is-off' : ''}">
             <div class="adm-cc-head">
-              <img src="${esc(item.image || 'assets/egypt-temple.webp')}" alt="" class="adm-cc-thumb">
+              ${renderMediaThumbHtml(item.image, 'assets/egypt-temple.webp', 'adm-cc-thumb')}
               <div class="adm-cc-info">
                 <span class="pill home">${esc(item.category || item.duration || item.route || active.key)}</span>
                 <h4>${esc(item.name || item.title)}</h4>
@@ -3102,6 +3247,7 @@ window.NileTrailsAdmin = (() => {
             <button type="submit" class="adm-btn-gold">حفظ الإعدادات</button>
           </div>
           <div class="adm-form-grid">
+            <div class="full-col">${mediaFieldHtml('brandLogo', 'شعار الموقع (Brand Logo)', s.brandLogo || 'assets/niletrails-logo.png', false)}</div>
             <label>اسم الموقع <input type="text" name="brandName" value="${esc(s.brandName)}"></label>
             <label>العملة (Code) <input type="text" name="currency" value="${esc(s.currency || 'USD')}" dir="ltr"></label>
             <label class="full-col">الشعار (Tagline) <input type="text" name="tagline" value="${esc(s.tagline)}"></label>
@@ -3204,7 +3350,8 @@ window.NileTrailsAdmin = (() => {
       { label: 'المزارات السياحية (Nubian & the Nile)', hint: 'قسم', act: 'tab', val: 'sightseeing' },
       { label: 'الإضافات والخدمات (Add-ons)', hint: 'قسم', act: 'tab', val: 'addons' },
       { label: 'الصفحة الرئيسية وفيديو البداية', hint: 'قسم', act: 'tab', val: 'homepage' },
-      { label: 'تغيير الألوان والهوية (Theme Palette)', hint: 'تصميم', act: 'sec', val: 'theme' },
+      { label: 'الهوية والألوان وشعار الموقع (Theme & Logo)', hint: 'تصميم', act: 'sec', val: 'theme' },
+      { label: 'تعديل ورفع لوجو الموقع (Brand Logo)', hint: 'تصميم', act: 'sec', val: 'logo' },
       { label: 'تعديل الهيدر واللوجو والقائمة العلوية', hint: 'تصميم', act: 'sec', val: 'header' },
       { label: 'تعديل الفوتر ومعلومات التواصل', hint: 'تصميم', act: 'sec', val: 'footer' },
       { label: 'الأسئلة الشائعة (FAQ)', hint: 'قسم', act: 'tab', val: 'faqs' },
@@ -4027,6 +4174,7 @@ window.NileTrailsAdmin = (() => {
       const fd = new FormData(e.target);
       st.settings = {
         ...st.settings,
+        brandLogo: fd.get('brandLogo') || st.settings?.brandLogo,
         brandName: fd.get('brandName'),
         tagline: fd.get('tagline'),
         currency: fd.get('currency') || 'USD',
@@ -4106,6 +4254,10 @@ window.NileTrailsAdmin = (() => {
     setSubMode,
     getPreviewDevice,
     setPreviewDevice,
+    PRESET_IMAGES,
+    PRESET_VIDEOS,
+    isVideoMediaUrl,
+    extractYoutubeId,
     undo,
     redo,
     canUndo,
